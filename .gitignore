@@ -1,0 +1,15 @@
+node_modules
+.openzeppelin
+.vscode
+bin
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+hardhat.config.ts
+README.md
+# Hardhat files
+cache
+artifacts
+subgraph
