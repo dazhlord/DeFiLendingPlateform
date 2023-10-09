@@ -64,6 +64,7 @@ contract UniVault is IVault, Ownable{
         interestRate = _rate;
     }
 
+    // deposit univ3 lp token to protocol
     function deposit(uint256 amount) external {
         updateInterestRate(msg.sender);
         updateTreasuryFee(msg.sender);
@@ -74,6 +75,7 @@ contract UniVault is IVault, Ownable{
         emit Deposit(msg.sender, amount, LP);
     }
 
+    // borrow stable coin based on collateral
     function borrow(uint256 amount) external {
         require(validateBorrow(msg.sender, amount));
 
@@ -86,7 +88,7 @@ contract UniVault is IVault, Ownable{
         emit Borrow(msg.sender, amount, LP);
     }
 
-
+    // withdraw lp token from protocol with reward
     function withdraw(uint256 amount) external {
 
         uint256 amountWithdraw = amount;
@@ -105,6 +107,7 @@ contract UniVault is IVault, Ownable{
         emit Withdraw(msg.sender, amountWithdraw, LP);
     }
 
+    //repay borrowed assets to protocol
     function repay(uint256 amount) external {
         validateRepay(msg.sender, amount);
 
