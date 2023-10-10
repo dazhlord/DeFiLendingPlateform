@@ -3,18 +3,18 @@
 
 ## Main Work Flow
 ### 1. User deposits whitelisted LP Tokens to the vault.
-Each LP tokens(Uniswap, Curve, Balancer) are deposited into each Vaults.
-Each Vault implement its own strategy.
+MainLending Vault manages LP tokens(Uniswap, Curve, Balancer) and these LP tokens are deposited into plateform via Vault contract.
+Vault deposits them to corresponding strategies and users who deposit LPtokens can take advantage from these protocols.
 
-UnivVault is main vault contract which manages UniswapV2 LP tokens.
+UnivStrategy takes Uniswap LP tokens and deposit them to Uniswap Pools.
 
-CurveVault manages Curve LP tokens and all Curve LP tokens deposited by users will be deposited to Convex.
+CurveStrategy takes Curve LP tokens from Vault and all Curve LP tokens deposited by users will be deposited into Convex.
 Users can borrow stablecoin based on collateral including profits from Convex.
 
-BalancerVault is for Balancer LP tokens and these LP tokens will be deposited to Balancer gauge.
+BalancerStrategy is for Balancer LP tokens and these LP tokens will be deposited to Balancer gauge.
 Users can borrow based on collateral including profits from Balancer gauge.
 ### 2. User borrows stablecoin based on collateral.
-Borrow amounts cannot go over LTV.
+Borrowing amounts cannot go over LTV.
 ### 3. User can repay the debt by paying debt interest first and then repay debt.
 Debt interest is calculated based on the interest rate.
 Means that debt increases automatically by time passes based on interest rate(APR).
@@ -29,11 +29,11 @@ During this call, protocol takes half of Liquidation Penaltiy from user's collat
 ### Debt interest will be sent to treasury as Protocol Fee and can claim by calling accure function.
 
 ## Functionality
-### Deposit(uint256 amount)
+### Deposit(address token, uint256 amount)
 Users deposit LP tokens via deposit function.
 This increases user's collateral and make possibility to borrow stable coin.
 
-### Borrow(uint256 amount)
+### Borrow(address token, uint256 amount)
 Once users deposit, they can borrow stable coins by calling borrow function.
 Debt amount increases by time passes based on interest rate.
 
@@ -42,19 +42,21 @@ Debt amount increases by time passes based on interest rate.
 #### User cannot borrow over LTV.d
 #### User cannot borrow zero amount.
 
-### Withdraw(uint256 amount)
+### Withdraw(address token, uint256 amount)
 Users withdraw assets by calling withdraw function.
+lendingVault interacts with strategies and takes assets from corresponding strategies.
+These strategies also interact with third-party protocols and withdraw assets from them, send back to users with rewards.
 #### Cannot withdraw if position goes over LTV.  (Collateral - withdrawAmount) / Debt > LTV
 Once user withdraw assets, collateral on vault decreases.
 
-### Repay(uint256 amount)
+### Repay(address token, uint256 amount)
 Users can repay borrowed assets.
 Users have to repay debt interest first and then repay borrowed assets.
 #### Cannot repay if there is no borrowed stable coins.
 #### Cannot repay if repay amount does not charge debt interest.
 Once repays, user's borrow amount decreases.
 
-### Liquidation(address user, uint256 amount)
+### Liquidation(address token, address user, uint256 amount)
 Liquidators can liquidate once user's collateral is over threshold.
 ### Liquidators can liquidate up to 50 % of debt.
 ### Liquidators can liquidate once liquidation is executed.
@@ -81,8 +83,9 @@ Reference Aave protocol's Oracle system.
 While monitoring users positions, and if liquidation threshold is met, execute liquidation.
 
 Build backend code which stores user informations, monitors positions and execute liquidation.
+For implement this, deploy Subgraph to hosted-service so all users' positions can be checked real time.
 
-Try to implement this by using schedule.
+Backend will interact with Subgraph and get states of plateform and can manages liquidation.
 
 ### FlashLoan
 Additionally, lending vault has flashloan functionality.
