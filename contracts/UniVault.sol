@@ -88,9 +88,8 @@ contract UniVault is IVault, Ownable{
         emit Borrow(msg.sender, amount, LP);
     }
 
-    // withdraw lp token from protocol with reward
+    // withdraw lp token from protocol
     function withdraw(uint256 amount) external {
-
         uint256 amountWithdraw = amount;
         if(amountWithdraw == type(uint256).max)
             amountWithdraw = collateralAmount[msg.sender];
@@ -100,7 +99,7 @@ contract UniVault is IVault, Ownable{
         updateInterestRate(msg.sender);
         updateTreasuryFee(msg.sender);
 
-        collateralAmount[msg.sender] -= amount;
+        collateralAmount[msg.sender] -= amountWithdraw;
 
         IERC20(LP).transfer(msg.sender, amountWithdraw);
 
@@ -113,6 +112,9 @@ contract UniVault is IVault, Ownable{
 
         uint256 debtAmount = debt(msg.sender);
 
+        updateInterestRate(msg.sender);
+        updateTreasuryFee(msg.sender);
+
         uint256 repayAmount = amount;
         if(debtAmount < amount) repayAmount = amount;
 
@@ -120,12 +122,9 @@ contract UniVault is IVault, Ownable{
 
         borrowAmount[msg.sender] -= repayAmount - debtFee;
 
-        updateInterestRate(msg.sender);
-        updateTreasuryFee(msg.sender);
+        IERC20(LP).transferFrom(msg.sender, address(this), repayAmount);
 
-        IERC20(LP).transferFrom(msg.sender, address(this), amount);
-
-        emit Repay(msg.sender, amount, LP);
+        emit Repay(msg.sender, repayAmount, LP);
     }
 
     function liquidation(address user, uint256 liquidationAmount) external {
@@ -184,8 +183,8 @@ contract UniVault is IVault, Ownable{
 
         if(borrowAmount[user] > 0) {
             uint256 debtAmount = debt(user);
-            uint256 collateralInUSD = IPriceOracle(oracle).getAssetPrice(LP) * userBalance * LTV / (10 ** LP_DECIMALS);
-            require(collateralInUSD - debtAmount > amountWithdraw, "ERR_WITHDRAW_INVALID_AMOUNT");
+            uint256 ltvInUSD = IPriceOracle(oracle).getAssetPrice(LP) * (userBalance - amountWithdraw) * LTV / (10 ** LP_DECIMALS);
+            require(ltvInUSD > debtAmount, "ERR_WITHDRAW_GOES_OVER_LTV");
         }
 
         return true;
