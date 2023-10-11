@@ -12,6 +12,10 @@ Get Price of LP Token in one transaction and also Prices of LP Tokens in a singl
 
 Make sure that Oracle system gets prices for whitelisted LP tokens.
 
+## Mock
+For test purpose, to create Mock Oracle system.
+It returns predetermined price information as fallback so it can be used in unit test.
+
 ## How to prevent attack
 To prevent flash loan attack, check the price changes when getting new price.
 
