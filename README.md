@@ -32,16 +32,16 @@ During this call, protocol takes half of Liquidation Penaltiy from user's collat
 ### Deposit(address token, uint256 amount)
 Users deposit LP tokens via deposit function.
 This increases user's collateral and make possibility to borrow stable coin.
+deposit function interact with Strategies and deposit to corresponding strategies(Uniswap, Curve, Balancer).
 
 ### Borrow(address token, uint256 amount)
 Once users deposit, they can borrow stable coins by calling borrow function.
 Debt amount increases by time passes based on interest rate.
 
 #### User cannot borrow if he/she has no collateral assets.
-#### User cannot borrow if already goes over LTV.
+#### User cannot borrow if already goes over LTV. This is limit of collateral plus rewards from native protocols.
 #### User cannot borrow over LTV.d
 #### User cannot borrow zero amount.
-
 ### Withdraw(address token, uint256 amount)
 Users withdraw assets by calling withdraw function.
 lendingVault interacts with strategies and takes assets from corresponding strategies.

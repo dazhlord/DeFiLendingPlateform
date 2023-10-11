@@ -9,9 +9,8 @@ import "./interfaces/IStableCoin.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/IPriceOracle.sol";
 
-contract UniVault is IVault, Ownable{
+contract lendingVault is IVault, Ownable{
     address public sToken;
-    address public LP;
     uint256 public LTV;
     uint256 public LThreshold;
     uint256 public LPenalty;
@@ -24,11 +23,14 @@ contract UniVault is IVault, Ownable{
 
     uint256 public totalBorrows;
 
-    mapping(address => uint256) public collateralAmount;
-    mapping(address => uint256) public borrowAmount;
-    mapping(address => bool) public isBorrowing;
-    mapping(address => uint256) public interest;
-    mapping(address => uint256) public lastUpdate;
+    struct LPPosition{
+        mapping(address => uint256) collateralAmount;
+        mapping(address => uint256) borrowAmount;
+        mapping(address => uint256) interest;
+        mapping(address => uint256) lastUpdate;
+    }
+
+    mapping(address => LPPosition) public position;
 
     uint256 public treasuryAmount;
 
@@ -38,14 +40,9 @@ contract UniVault is IVault, Ownable{
     event Repay(address from, uint256 amount, address asset);
     event Liquidation(address liquidator, address user, uint256 amount, address asset);
 
-    constructor(address _LP, address _sToken, address _oracle) {
-        LP = _LP;
+    constructor(address _sToken, address _oracle) {
         sToken = _sToken;
         oracle = _oracle;
-    }
-
-    function setLP(address _LP) external onlyOwner {
-        LP = _LP;
     }
 
     function setLTV(uint256 _LTV) external onlyOwner {
@@ -64,51 +61,55 @@ contract UniVault is IVault, Ownable{
         interestRate = _rate;
     }
 
-    // deposit univ3 lp token to protocol
-    function deposit(uint256 amount) external {
+    function deposit(address strategy, address lpToken, uint256 amount) external {
         updateInterestRate(msg.sender);
         updateTreasuryFee(msg.sender);
 
-        collateralAmount[msg.sender] += amount;
+        position[lpToken].collateralAmount[msg.sender] += amount;
 
-        IERC20(LP).transferFrom(msg.sender, address(this), amount);
+        IERC20(lpToken).transferFrom(msg.sender, strategy, amount);
+
+        //Deposit LP token to corresponding protocol pool
+        IStrategy(strategy).deposit(lpToken, amount);
         emit Deposit(msg.sender, amount, LP);
     }
 
     // borrow stable coin based on collateral
-    function borrow(uint256 amount) external {
-        require(validateBorrow(msg.sender, amount));
+    function borrow(address strategy, address lpToken, uint256 amount) external {
+        require(validateBorrow(lpToken, msg.sender, amount));
 
         updateInterestRate(msg.sender);
         updateTreasuryFee(msg.sender);
 
-        borrowAmount[msg.sender] += amount;
+        position[lpToken].borrowAmount[msg.sender] += amount;
         IStableCoin(sToken).mint(msg.sender, amount);
 
         emit Borrow(msg.sender, amount, LP);
     }
 
     // withdraw lp token from protocol
-    function withdraw(uint256 amount) external {
+    function withdraw(address strategy, address lpToken, uint256 amount) external {
         uint256 amountWithdraw = amount;
         if(amountWithdraw == type(uint256).max)
-            amountWithdraw = collateralAmount[msg.sender];
+            amountWithdraw = position[lpToken].collateralAmount[msg.sender];
 
-        validateWithdraw(msg.sender, amountWithdraw);
+        validateWithdraw(lpToken, msg.sender, amountWithdraw);
 
         updateInterestRate(msg.sender);
         updateTreasuryFee(msg.sender);
 
-        collateralAmount[msg.sender] -= amountWithdraw;
+        position[lpToken].collateralAmount[msg.sender] -= amountWithdraw;
 
-        IERC20(LP).transfer(msg.sender, amountWithdraw);
+        //Withdraw LP token from protocol to lendingVault
+        uint256 amountwithReward = IStrategy(strategy).withdraw(lpToken, amountWithdraw);
+        IERC20(LP).transfer(msg.sender, amountwithReward);
 
-        emit Withdraw(msg.sender, amountWithdraw, LP);
+        emit Withdraw(msg.sender, amountwithReward, LP);
     }
 
     //repay borrowed assets to protocol
-    function repay(uint256 amount) external {
-        validateRepay(msg.sender, amount);
+    function repay(address strategy, address lpToken, uint256 amount) external {
+        validateRepay(lpToken, msg.sender, amount);
 
         uint256 debtAmount = debt(msg.sender);
 
@@ -118,29 +119,29 @@ contract UniVault is IVault, Ownable{
         uint256 repayAmount = amount;
         if(debtAmount < amount) repayAmount = amount;
 
-        uint256 debtFee = debtAmount - borrowAmount[msg.sender];
+        uint256 debtFee = debtAmount - position[lpToken].borrowAmount[msg.sender];
 
-        borrowAmount[msg.sender] -= repayAmount - debtFee;
+        position[lpToken].borrowAmount[msg.sender] -= repayAmount - debtFee;
 
         IERC20(LP).transferFrom(msg.sender, address(this), repayAmount);
 
         emit Repay(msg.sender, repayAmount, LP);
     }
 
-    function liquidation(address user, uint256 liquidationAmount) external {
-        validateLiquidation(user, liquidationAmount);
+    function liquidation(address strategy, address lpToken, address user, uint256 liquidationAmount) external {
+        validateLiquidation(lpToken, user, liquidationAmount);
 
         uint256 penaltyAmount = liquidationAmount * LPenalty / 100;
 
-        collateralAmount[user] -= usdToCollateral(liquidationAmount + penaltyAmount);
-        collateralAmount[msg.sender] += usdToCollateral(liquidationAmount + penaltyAmount / 2);
+        position[lpToken].collateralAmount[user] -= usdToCollateral(liquidationAmount + penaltyAmount);
+        position[lpToken].collateralAmount[msg.sender] += usdToCollateral(liquidationAmount + penaltyAmount / 2);
 
-        uint256 debtFee = debt(user) - borrowAmount[user];
+        uint256 debtFee = debt(user) - position[lpToken].borrowAmount[user];
 
         updateInterestRate(user);
         updateTreasuryFee(user);
 
-        borrowAmount[user] -= liquidationAmount - debtFee;
+        position[lpToken].borrowAmount[user] -= liquidationAmount - debtFee;
         treasuryAmount += penaltyAmount / 2;
 
         IStableCoin(sToken).burn(msg.sender, liquidationAmount);
@@ -160,13 +161,13 @@ contract UniVault is IVault, Ownable{
     }
 
     function debt(address borrower) public view returns(uint256) {
-        return borrowAmount[borrower] * (100 + interest[borrower]) / 100;
+        return position[lpToken].borrowAmount[borrower] * (100 + position[lpToken].interest[borrower]) / 100;
     }
 
-    function validateBorrow(address user, uint256 amount) internal view returns(bool) {
-        require(collateralAmount[msg.sender] > 0, "ERR_BORROW_NO_COLLATERAL");
+    function validateBorrow(address token, address user, uint256 amount) internal view returns(bool) {
+        require(position[lpToken].collateralAmount[user] > 0, "ERR_BORROW_NO_COLLATERAL");
 
-        uint256 amountLimit = collateralAmount[msg.sender];
+        uint256 amountLimit = position[lpToken].collateralAmount[user];
         amountLimit = amountLimit * LTV / 100;
         uint256 amountLimitInUSD = IPriceOracle(oracle).getAssetPrice(LP)*amountLimit / (10 ** LP_DECIMALS);
 
@@ -176,12 +177,12 @@ contract UniVault is IVault, Ownable{
         return true;
     }
 
-    function validateWithdraw(address user, uint256 amountWithdraw) internal view returns(bool) {
-        uint256 userBalance = collateralAmount[user];
+    function validateWithdraw(address token, address user, uint256 amountWithdraw) internal view returns(bool) {
+        uint256 userBalance = position[lpToken].collateralAmount[user];
 
         require(amountWithdraw > 0 && amountWithdraw <= userBalance, "ERR_WITHDRAW_INVALID_AMOUNT");
 
-        if(borrowAmount[user] > 0) {
+        if(position[lpToken].borrowAmount[user] > 0) {
             uint256 debtAmount = debt(user);
             uint256 ltvInUSD = IPriceOracle(oracle).getAssetPrice(LP) * (userBalance - amountWithdraw) * LTV / (10 ** LP_DECIMALS);
             require(ltvInUSD > debtAmount, "ERR_WITHDRAW_GOES_OVER_LTV");
@@ -190,9 +191,9 @@ contract UniVault is IVault, Ownable{
         return true;
     }
 
-    function validateRepay(address user, uint256 amount) internal view returns(bool) {
+    function validateRepay(address token, address user, uint256 amount) internal view returns(bool) {
         require(amount> 0 && amount <= IERC20(sToken).balanceOf(user));
-        uint256 debtFee = debt(user) - borrowAmount[user];
+        uint256 debtFee = debt(user) - position[lpToken].borrowAmount[user];
 
         require(debtFee > 0, "ERR_REPAY_NO_BORROWED");
         require(amount >= debtFee, "ERR_REPAY_TOO_SMALL_AMOUNT");
@@ -200,10 +201,10 @@ contract UniVault is IVault, Ownable{
         return true;
     }
 
-    function validateLiquidation(address user, uint256 amount) internal view returns(bool) {
+    function validateLiquidation(address token, address user, uint256 amount) internal view returns(bool) {
         uint256 debtAmount = debt(user);
 
-        uint256 thresholdAmountInUSD = IPriceOracle(oracle).getAssetPrice(LP)* collateralAmount[user] * LThreshold / (10 ** LP_DECIMALS);
+        uint256 thresholdAmountInUSD = IPriceOracle(oracle).getAssetPrice(LP)* position[lpToken].collateralAmount[user] * LThreshold / (10 ** LP_DECIMALS);
 
         require(debtAmount >= thresholdAmountInUSD);
         require(amount * 2 <= debtAmount);
@@ -212,12 +213,12 @@ contract UniVault is IVault, Ownable{
     }
 
     function updateInterestRate(address user) internal {
-        interest[msg.sender] = interest[user] + interestRate * 10 ** INTEREST_DECIMALS * ((block.timestamp - lastUpdate[user]) /1 days) / 365;
-        lastUpdate[user] = block.timestamp;
+        position[lpToken].interest[msg.sender] = position[lpToken].interest[user] + interestRate * 10 ** INTEREST_DECIMALS * ((block.timestamp - position[lpToken].lastUpdate[user]) /1 days) / 365;
+        position[lpToken].lastUpdate[user] = block.timestamp;
     }
 
     function updateTreasuryFee(address user) internal {
-        uint256 debtFee = debt(user) - borrowAmount[user];
+        uint256 debtFee = debt(user) - position[lpToken].borrowAmount[user];
         treasuryAmount += debtFee;
     }
 
