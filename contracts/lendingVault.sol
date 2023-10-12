@@ -131,7 +131,7 @@ contract lendingVault is IVault, Ownable{
     function liquidation(address lpToken, address user, uint256 liquidationAmount) external {
         validateLiquidation(lpToken, user, liquidationAmount);
 
-        uint256 penaltyAmount = liquidationAmount * LPenalty / 100;
+        uint256 penaltyAmount = liquidationAmount * position[lpToken].LPenalty / 100;
 
         position[lpToken].collateralAmount[user] -= usdToCollateral(liquidationAmount + penaltyAmount);
         position[lpToken].collateralAmount[msg.sender] += usdToCollateral(liquidationAmount + penaltyAmount / 2);
@@ -164,12 +164,12 @@ contract lendingVault is IVault, Ownable{
         return position[lpToken].borrowAmount[borrower] * (100 + position[lpToken].interest[borrower]) / 100;
     }
 
-    function validateBorrow(address token, address user, uint256 amount) internal view returns(bool) {
+    function validateBorrow(address lpToken, address user, uint256 amount) internal view returns(bool) {
         require(position[lpToken].collateralAmount[user] > 0, "ERR_BORROW_NO_COLLATERAL");
 
         uint256 amountLimit = position[lpToken].collateralAmount[user];
-        amountLimit = amountLimit * LTV / 100;
-        uint256 amountLimitInUSD = IPriceOracle(oracle).getAssetPrice(LP)*amountLimit / (10 ** LP_DECIMALS);
+        amountLimit = amountLimit * position[lpToken].LTV / 100;
+        uint256 amountLimitInUSD = IPriceOracle(oracle).getAssetPrice(lpToken)*amountLimit / (10 ** LP_DECIMALS);
 
         require(debt(user) < amountLimitInUSD, "ERR_BORROW_COVERED_LTV");
         require(amount + debt(user) <= amountLimitInUSD, "ERR_BORROW_OVER_LTV");
@@ -177,14 +177,14 @@ contract lendingVault is IVault, Ownable{
         return true;
     }
 
-    function validateWithdraw(address token, address user, uint256 amountWithdraw) internal view returns(bool) {
+    function validateWithdraw(address lpToken, address user, uint256 amountWithdraw) internal view returns(bool) {
         uint256 userBalance = position[lpToken].collateralAmount[user];
 
         require(amountWithdraw > 0 && amountWithdraw <= userBalance, "ERR_WITHDRAW_INVALID_AMOUNT");
 
         if(position[lpToken].borrowAmount[user] > 0) {
             uint256 debtAmount = debt(user);
-            uint256 ltvInUSD = IPriceOracle(oracle).getAssetPrice(LP) * (userBalance - amountWithdraw) * LTV / (10 ** LP_DECIMALS);
+            uint256 ltvInUSD = IPriceOracle(oracle).getAssetPrice(lpToken) * (userBalance - amountWithdraw) * position[lpToken].LTV / (10 ** LP_DECIMALS);
             require(ltvInUSD > debtAmount, "ERR_WITHDRAW_GOES_OVER_LTV");
         }
 
@@ -201,10 +201,10 @@ contract lendingVault is IVault, Ownable{
         return true;
     }
 
-    function validateLiquidation(address token, address user, uint256 amount) internal view returns(bool) {
+    function validateLiquidation(address lpToken, address user, uint256 amount) internal view returns(bool) {
         uint256 debtAmount = debt(user);
 
-        uint256 thresholdAmountInUSD = IPriceOracle(oracle).getAssetPrice(LP)* position[lpToken].collateralAmount[user] * LThreshold / (10 ** LP_DECIMALS);
+        uint256 thresholdAmountInUSD = IPriceOracle(oracle).getAssetPrice(lpToken)* position[lpToken].collateralAmount[user] * position[lpToken].LThreshold / (10 ** LP_DECIMALS);
 
         require(debtAmount >= thresholdAmountInUSD);
         require(amount * 2 <= debtAmount);
