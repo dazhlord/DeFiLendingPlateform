@@ -11,9 +11,6 @@ import "./interfaces/IPriceOracle.sol";
 
 contract lendingVault is IVault, Ownable{
     address public sToken;
-    uint256 public LTV;
-    uint256 public LThreshold;
-    uint256 public LPenalty;
     uint256 public interestRate;
     address public treasury;
 
@@ -24,6 +21,9 @@ contract lendingVault is IVault, Ownable{
     uint256 public totalBorrows;
 
     struct LPPosition{
+        uint255 LTV;
+        uint256 LThreshold;
+        uint256 LPenalty;
         mapping(address => uint256) collateralAmount;
         mapping(address => uint256) borrowAmount;
         mapping(address => uint256) interest;
@@ -31,6 +31,7 @@ contract lendingVault is IVault, Ownable{
     }
 
     mapping(address => LPPosition) public position;
+    mapping(address => address) public strategy;    // lptoken -> strategy
 
     uint256 public treasuryAmount;
 
@@ -45,37 +46,36 @@ contract lendingVault is IVault, Ownable{
         oracle = _oracle;
     }
 
-    function setLTV(uint256 _LTV) external onlyOwner {
-        LTV = _LTV;
+    function setStrategy(address lpToken, address _strategy) public onlyOwner {
+        strategy[lpToken] = _strategy;
     }
 
-    function setLThreshold(uint256 _LT) external onlyOwner {
-        LThreshold = _LT;
-    }
-
-    function setLPenalty(uint256 _LPenalty) external onlyOwner {
-        LPenalty = _LPenalty;
+    function setStrategies(address[] lpTokens, address[] _strategies) public onlyOwner {
+        require(lpTokens.length == _strategies.length, "invalid input");
+        for(uint i = 0 ; i < lpTokens.length; i ++)
+            strategy[lpTokens[i]] = _strategies[i];
     }
 
     function setInterstRate(uint256 _rate) external onlyOwner {
         interestRate = _rate;
     }
 
-    function deposit(address strategy, address lpToken, uint256 amount) external {
+
+    function deposit(address lpToken, uint256 amount) external {
         updateInterestRate(msg.sender);
         updateTreasuryFee(msg.sender);
 
         position[lpToken].collateralAmount[msg.sender] += amount;
 
-        IERC20(lpToken).transferFrom(msg.sender, strategy, amount);
+        IERC20(lpToken).transferFrom(msg.sender, strategy[lpToken], amount);
 
         //Deposit LP token to corresponding protocol pool
-        IStrategy(strategy).deposit(lpToken, amount);
-        emit Deposit(msg.sender, amount, LP);
+        IStrategy(strategy[lpToken]).deposit(msg.sender, lpToken, amount);
+        emit Deposit(msg.sender, amount, lpToken);
     }
 
     // borrow stable coin based on collateral
-    function borrow(address strategy, address lpToken, uint256 amount) external {
+    function borrow(address lpToken, uint256 amount) external {
         require(validateBorrow(lpToken, msg.sender, amount));
 
         updateInterestRate(msg.sender);
@@ -88,7 +88,7 @@ contract lendingVault is IVault, Ownable{
     }
 
     // withdraw lp token from protocol
-    function withdraw(address strategy, address lpToken, uint256 amount) external {
+    function withdraw(address lpToken, uint256 amount) external {
         uint256 amountWithdraw = amount;
         if(amountWithdraw == type(uint256).max)
             amountWithdraw = position[lpToken].collateralAmount[msg.sender];
@@ -101,14 +101,14 @@ contract lendingVault is IVault, Ownable{
         position[lpToken].collateralAmount[msg.sender] -= amountWithdraw;
 
         //Withdraw LP token from protocol to lendingVault
-        uint256 amountwithReward = IStrategy(strategy).withdraw(lpToken, amountWithdraw);
+        uint256 amountwithReward = IStrategy(strategy[lpToken]).withdraw(lpToken, amountWithdraw);
         IERC20(LP).transfer(msg.sender, amountwithReward);
 
-        emit Withdraw(msg.sender, amountwithReward, LP);
+        emit Withdraw(msg.sender, amountwithReward, lpToken);
     }
 
     //repay borrowed assets to protocol
-    function repay(address strategy, address lpToken, uint256 amount) external {
+    function repay(address lpToken, uint256 amount) external {
         validateRepay(lpToken, msg.sender, amount);
 
         uint256 debtAmount = debt(msg.sender);
@@ -123,12 +123,12 @@ contract lendingVault is IVault, Ownable{
 
         position[lpToken].borrowAmount[msg.sender] -= repayAmount - debtFee;
 
-        IERC20(LP).transferFrom(msg.sender, address(this), repayAmount);
+        IERC20(lpTokenk).transferFrom(msg.sender, address(this), repayAmount);
 
-        emit Repay(msg.sender, repayAmount, LP);
+        emit Repay(msg.sender, repayAmount, lpToken);
     }
 
-    function liquidation(address strategy, address lpToken, address user, uint256 liquidationAmount) external {
+    function liquidation(address lpToken, address user, uint256 liquidationAmount) external {
         validateLiquidation(lpToken, user, liquidationAmount);
 
         uint256 penaltyAmount = liquidationAmount * LPenalty / 100;
@@ -147,7 +147,7 @@ contract lendingVault is IVault, Ownable{
         IStableCoin(sToken).burn(msg.sender, liquidationAmount);
         IStableCoin(sToken).mint(address(this), liquidationAmount);
 
-        emit Liquidation(msg.sender, user, liquidationAmount, LP);
+        emit Liquidation(msg.sender, user, liquidationAmount, lpToken);
     }
 
     // claim protocol fees
