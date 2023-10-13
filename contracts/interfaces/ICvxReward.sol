@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.9;
 
-interface IConvexRewards{
+interface ICvxReward{
     //get balance of an address
     function balanceOf(address _account) external returns(uint256);
     //withdraw to a convex tokenized deposit
@@ -15,4 +15,6 @@ interface IConvexRewards{
     function stake(uint256 _amount) external returns(bool);
     //stake a convex tokenized deposit for another address(transfering ownership)
     function stakeFor(address _account,uint256 _amount) external returns(bool);
+    function earned(address account) external view returns(uint256);
+
 }
