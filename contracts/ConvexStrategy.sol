@@ -8,10 +8,13 @@ import "./interfaces/ICvxReward.sol";
 
 contract ConvexStrategy is Ownable{
     address public vault;
-    
-    address public immutable crv;
-    address public immutable cvx;
-    address public cvxBooster;
+
+    address public cvxBooster = address(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    address public constant crv =
+    address(0xD533a949740bb3306d119CC777fa900bA034cd52);
+
+  address public constant cvx =
+    address(0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B);
 
     mapping(address => uint256) public poolId;    // lpToken -> poolId
     // mapping(uint256 => address) public cvxReward; // poolId -> cvxReward
@@ -35,11 +38,8 @@ contract ConvexStrategy is Ownable{
         _;
     }
     
-    constructor(address _lendingVault, address _cvxBooster, address _crv, address _cvx) {
+    constructor(address _lendingVault) {
         vault = _lendingVault;
-        cvxBooster = _cvxBooster;
-        crv = _crv;
-        cvx = _cvx;
     }
 
     function setPoolId(address lpToken, uint256 pid) external onlyOwner {
@@ -94,7 +94,7 @@ contract ConvexStrategy is Ownable{
         uint256 _poolId = poolId[lpToken];
         address cvxReward = getCvxRewardAddr(_poolId);
         //Claim reward from Convex
-        ICvxReward(cvxReward).getReward();
+        ICvxReward(cvxReward).getReward(address(this), true);
 
         updateRewardState(_poolId);
         // update user state

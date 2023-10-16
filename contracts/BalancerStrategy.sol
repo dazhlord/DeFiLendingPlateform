@@ -82,11 +82,13 @@ contract BalancerStrategy is Ownable{
         IERC20(lpToken).transfer(user, amount);
     }
 
-    function claim(address user, address lpToken) external onlyVault {
+    function _claim(address user, address lpToken) internal returns(uint256) {
         //Claim reward from Convex
-        IBalancerGauge(gauges[lpToken]).claim_rewards(msg.sender);
+        uint256 amountBefore = IERC20(rewardToken).balanceOf(address(this));
+        IBalancerGauge(gauges[lpToken]).claim_rewards(address(this));
+        uint256 amountAfter = IERC20(rewardToken).balanceOf(address(this));
 
-        updateRewardState(lpToken);
+        updateRewardState(amountAfter - amountBefore, lpToken);
         // update user state
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
@@ -95,16 +97,23 @@ contract BalancerStrategy is Ownable{
             staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
             return;
         }
+        return rewardsToHarvest;
+    }
+
+    function claim(address user, address lpToken) public onlyVault {
+        uint256 rewardsToHarvest = _claim(user, lpToken);
+        //transfer reward to user
+        Pool storage pool = pools[lpToken];
+        PoolStaker storage staker = poolStakers[lpToken][user];
+
         staker.rewards = 0;
         staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
 
-        //transfer reward to user
         IERC20(rewardToken).transfer(user, rewardsToHarvest);
     }
 
     function getRewardUser(address user, address lpToken) external returns (uint256)  {
-
-        updateRewardState(lpToken);
+        _claim(user, lpToken);
         
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
@@ -113,13 +122,12 @@ contract BalancerStrategy is Ownable{
         return rewardsToHarvest;
     }
 
-    function updateRewardState(address lpToken) internal {
+    function updateRewardState(uint256 amount, address lpToken) internal {
         Pool storage pool = pools[lpToken];
         if (pool.tokensStaked == 0) {
             return;
         }
         //TODO get earned amount from BalancerGauge
-        uint256 rewards = IBalancerGauge(gauges[lpToken]).claimed_reward(msg.sender, rewardToken);
-        pool.accumulatedRewardsPerShare = pool.accumulatedRewardsPerShare + (rewards * 1e12 / pool.tokensStaked);
+        pool.accumulatedRewardsPerShare = pool.accumulatedRewardsPerShare + (amount * 1e12 / pool.tokensStaked);
     }
 }
