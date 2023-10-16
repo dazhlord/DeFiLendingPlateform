@@ -11,7 +11,6 @@ contract BalancerStrategy is Ownable{
     mapping(address =>address) public gauges; // lpToken - > Gauge address
 
     address public rewardToken;
-    mapping(address => uint256) public poolId;    // lpToken -> poolId
 
     struct PoolStaker{
         uint256 amount;
@@ -28,7 +27,7 @@ contract BalancerStrategy is Ownable{
     mapping(address => mapping(address => PoolStaker)) public poolStakers;  // lpToken -> user -> PoolStaker
 
     modifier onlyVault() {
-        require(msg.sender == vault);
+        require(msg.sender == vault, "only vault");
         _;
     }
     
@@ -48,10 +47,11 @@ contract BalancerStrategy is Ownable{
     }
 
     function deposit(address user, address lpToken, uint256 amount) external onlyVault{
-        //TODO check if lpToken == booster.poolInfo(poolId[lpToken]).lptoken
+        require(amount > 0);
+        require(gauges[lpToken] != address(0), "invalid lp token address");
 
         //update reward state of depositor
-        updateRewardState(lpToken);
+        _claim(user, lpToken);
 
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
@@ -65,10 +65,15 @@ contract BalancerStrategy is Ownable{
     }
     
     function withdraw(address user, address lpToken, uint256 amount) external onlyVault{
+        require(amount > 0);
+        require(gauges[lpToken] != address(0), "invalid lp token address");
+        
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
 
-        updateRewardState(lpToken);
+        require(staker.amount >= amount, "invalid withdraw amount");
+
+        _claim(user, lpToken);
 
         //update user state
         staker.amount -= amount;
@@ -85,7 +90,7 @@ contract BalancerStrategy is Ownable{
     function _claim(address user, address lpToken) internal returns(uint256) {
         //Claim reward from Convex
         uint256 amountBefore = IERC20(rewardToken).balanceOf(address(this));
-        IBalancerGauge(gauges[lpToken]).claim_rewards(address(this));
+        IBalancerGauge(gauges[lpToken]).claim_rewards();
         uint256 amountAfter = IERC20(rewardToken).balanceOf(address(this));
 
         updateRewardState(amountAfter - amountBefore, lpToken);
@@ -95,13 +100,16 @@ contract BalancerStrategy is Ownable{
         uint256 rewardsToHarvest = (staker.amount * pool.accumulatedRewardsPerShare / 1e12) - staker.rewardDebt;
         if (rewardsToHarvest == 0) {
             staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
-            return;
+            return 0;
         }
         return rewardsToHarvest;
     }
 
-    function claim(address user, address lpToken) public onlyVault {
+    function claim(address user, address lpToken) public onlyVault  returns(uint256) {
+        require(gauges[lpToken] != address(0), "invalid lp token address");
+
         uint256 rewardsToHarvest = _claim(user, lpToken);
+        require(rewardsToHarvest > 0, "Nothing to Claim");
         //transfer reward to user
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
@@ -113,11 +121,7 @@ contract BalancerStrategy is Ownable{
     }
 
     function getRewardUser(address user, address lpToken) external returns (uint256)  {
-        _claim(user, lpToken);
-        
-        Pool storage pool = pools[lpToken];
-        PoolStaker storage staker = poolStakers[lpToken][user];
-        uint256 rewardsToHarvest = (staker.amount * pool.accumulatedRewardsPerShare / 1e12) - staker.rewardDebt;
+        uint256 rewardsToHarvest= _claim(user, lpToken);
 
         return rewardsToHarvest;
     }

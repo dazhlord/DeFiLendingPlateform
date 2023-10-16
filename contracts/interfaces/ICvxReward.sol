@@ -10,7 +10,7 @@ interface ICvxReward{
     //withdraw directly to curve LP token
     function withdrawAndUnwrap(uint256 _amount, bool _claim) external returns(bool);
     //claim rewards
-    function getReward() external returns(bool);
+    function getReward(address user, bool state) external returns(bool);
     //stake a convex tokenized deposit
     function stake(uint256 _amount) external returns(bool);
     //stake a convex tokenized deposit for another address(transfering ownership)
