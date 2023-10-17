@@ -11,7 +11,6 @@ contract BalancerStrategy is Ownable{
     mapping(address =>address) public gauges; // lpToken - > Gauge address
 
     address public rewardToken;
-    mapping(address => uint256) public poolId;    // lpToken -> poolId
 
     struct PoolStaker{
         uint256 amount;
@@ -28,7 +27,7 @@ contract BalancerStrategy is Ownable{
     mapping(address => mapping(address => PoolStaker)) public poolStakers;  // lpToken -> user -> PoolStaker
 
     modifier onlyVault() {
-        require(msg.sender == vault);
+        require(msg.sender == vault, "only vault");
         _;
     }
     
@@ -48,10 +47,11 @@ contract BalancerStrategy is Ownable{
     }
 
     function deposit(address user, address lpToken, uint256 amount) external onlyVault{
-        //TODO check if lpToken == booster.poolInfo(poolId[lpToken]).lptoken
+        require(amount > 0);
+        require(gauges[lpToken] != address(0), "invalid lp token address");
 
         //update reward state of depositor
-        updateRewardState(lpToken);
+        _claim(user, lpToken);
 
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
@@ -61,14 +61,19 @@ contract BalancerStrategy is Ownable{
         //Update pool state
         pool.tokensStaked += amount;
 
-        IBalancerGauge(gauges[lpToken]).deposit(amount, false);
+        IBalancerGauge(gauges[lpToken]).deposit(amount);
     }
     
     function withdraw(address user, address lpToken, uint256 amount) external onlyVault{
+        require(amount > 0);
+        require(gauges[lpToken] != address(0), "invalid lp token address");
+                
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
 
-        updateRewardState(lpToken);
+        require(staker.amount >= amount, "invalid withdraw amount");
+
+        _claim(user, lpToken);
 
         //update user state
         staker.amount -= amount;
@@ -78,48 +83,55 @@ contract BalancerStrategy is Ownable{
         pool.tokensStaked -= amount;
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
-        IBalancerGauge(gauges[lpToken]).withdraw(amount, false);
+        IBalancerGauge(gauges[lpToken]).withdraw(amount);
         IERC20(lpToken).transfer(user, amount);
     }
 
-    function claim(address user, address lpToken) external onlyVault {
+    function _claim(address user, address lpToken) internal returns(uint256) {
         //Claim reward from Convex
-        IBalancerGauge(gauges[lpToken]).claim_rewards(msg.sender);
+        uint256 amountBefore = IERC20(rewardToken).balanceOf(address(this));
+        IBalancerGauge(gauges[lpToken]).claim_rewards(address(this));
+        uint256 amountAfter = IERC20(rewardToken).balanceOf(address(this));
 
-        updateRewardState(lpToken);
+        updateRewardState(amountAfter - amountBefore, lpToken);
         // update user state
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
         uint256 rewardsToHarvest = (staker.amount * pool.accumulatedRewardsPerShare / 1e12) - staker.rewardDebt;
         if (rewardsToHarvest == 0) {
             staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
-            return;
+            return 0;
         }
+        return rewardsToHarvest;
+    }
+
+    function claim(address user, address lpToken) public onlyVault{
+        require(gauges[lpToken] != address(0), "invalid lp token address");
+
+        uint256 rewardsToHarvest = _claim(user, lpToken);
+        require(rewardsToHarvest > 0, "Nothing to Claim");
+        //transfer reward to user
+        Pool storage pool = pools[lpToken];
+        PoolStaker storage staker = poolStakers[lpToken][user];
+
         staker.rewards = 0;
         staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
 
-        //transfer reward to user
         IERC20(rewardToken).transfer(user, rewardsToHarvest);
     }
 
     function getRewardUser(address user, address lpToken) external returns (uint256)  {
-
-        updateRewardState(lpToken);
-        
-        Pool storage pool = pools[lpToken];
-        PoolStaker storage staker = poolStakers[lpToken][user];
-        uint256 rewardsToHarvest = (staker.amount * pool.accumulatedRewardsPerShare / 1e12) - staker.rewardDebt;
+        uint256 rewardsToHarvest= _claim(user, lpToken);
 
         return rewardsToHarvest;
     }
 
-    function updateRewardState(address lpToken) internal {
+    function updateRewardState(uint256 amount, address lpToken) internal {
         Pool storage pool = pools[lpToken];
         if (pool.tokensStaked == 0) {
             return;
         }
         //TODO get earned amount from BalancerGauge
-        uint256 rewards = IBalancerGauge(gauges[lpToken]).claimed_reward(msg.sender, rewardToken);
-        pool.accumulatedRewardsPerShare = pool.accumulatedRewardsPerShare + (rewards * 1e12 / pool.tokensStaked);
+        pool.accumulatedRewardsPerShare = pool.accumulatedRewardsPerShare + (amount * 1e12 / pool.tokensStaked);
     }
 }
