@@ -61,13 +61,13 @@ contract BalancerStrategy is Ownable{
         //Update pool state
         pool.tokensStaked += amount;
 
-        IBalancerGauge(gauges[lpToken]).deposit(amount, false);
+        IBalancerGauge(gauges[lpToken]).deposit(amount);
     }
     
     function withdraw(address user, address lpToken, uint256 amount) external onlyVault{
         require(amount > 0);
         require(gauges[lpToken] != address(0), "invalid lp token address");
-        
+                
         Pool storage pool = pools[lpToken];
         PoolStaker storage staker = poolStakers[lpToken][user];
 
@@ -83,14 +83,14 @@ contract BalancerStrategy is Ownable{
         pool.tokensStaked -= amount;
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
-        IBalancerGauge(gauges[lpToken]).withdraw(amount, false);
+        IBalancerGauge(gauges[lpToken]).withdraw(amount);
         IERC20(lpToken).transfer(user, amount);
     }
 
     function _claim(address user, address lpToken) internal returns(uint256) {
         //Claim reward from Convex
         uint256 amountBefore = IERC20(rewardToken).balanceOf(address(this));
-        IBalancerGauge(gauges[lpToken]).claim_rewards();
+        IBalancerGauge(gauges[lpToken]).claim_rewards(address(this));
         uint256 amountAfter = IERC20(rewardToken).balanceOf(address(this));
 
         updateRewardState(amountAfter - amountBefore, lpToken);
@@ -105,7 +105,7 @@ contract BalancerStrategy is Ownable{
         return rewardsToHarvest;
     }
 
-    function claim(address user, address lpToken) public onlyVault  returns(uint256) {
+    function claim(address user, address lpToken) public onlyVault{
         require(gauges[lpToken] != address(0), "invalid lp token address");
 
         uint256 rewardsToHarvest = _claim(user, lpToken);
