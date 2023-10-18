@@ -83,44 +83,44 @@ describe("TokenPool", async () => {
             await LPToken.connect(BalStrategy.signer).approve(gauge1.address, ethers.utils.parseEther("100"));
         })
 
-        // describe("deposit functionality", async() => {
-        //     it("revert if caller is not Vault", async() => {
-        //         await expect(BalStrategy.connect(user1).deposit(user1.address, lpToken1.address, 100)).revertedWith("only vault");
-        //     })
-        //     it("revert if invalid input", async() => {
-        //         await expect(BalStrategy.connect(vault).deposit(user1.address, user2.address, 100)).revertedWith("invalid lp token address");
-        //         await expect(BalStrategy.connect(vault).deposit(user1.address, lpToken1.address, 0)).reverted;
-        //     })
-        //     it("deposit successfully", async() => {
-        //         await BalStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1"));
+        describe("deposit functionality", async() => {
+            it("revert if caller is not Vault", async() => {
+                await expect(BalStrategy.connect(user1).deposit(user1.address, lpToken1.address, 100)).revertedWith("only vault");
+            })
+            it("revert if invalid input", async() => {
+                await expect(BalStrategy.connect(vault).deposit(user1.address, user2.address, 100)).revertedWith("invalid lp token address");
+                await expect(BalStrategy.connect(vault).deposit(user1.address, lpToken1.address, 0)).reverted;
+            })
+            it("deposit successfully", async() => {
+                await BalStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1"));
                 
-        //         const pool = await BalStrategy.poolInfo(lpToken1.address);
-        //         expect(pool.totalDeposit).to.be.eq(ethers.utils.parseEther("1"));
-        //     })
-        // })
+                const pool = await BalStrategy.poolInfo(lpToken1.address);
+                expect(pool.totalDeposit).to.be.eq(ethers.utils.parseEther("1"));
+            })
+        })
 
-        // describe("withdraw functionality", async() => {
-        //     beforeEach(async() => {
-        //         await BalStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1")); 
-        //         await increaseBlockTimestamp(provider, 86400);
-        //     })
+        describe("withdraw functionality", async() => {
+            beforeEach(async() => {
+                await BalStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1")); 
+                await increaseBlockTimestamp(provider, 86400);
+            })
 
-        //     it("revert if caller is not Vault", async() => {
-        //         await expect(BalStrategy.connect(user1).withdraw(user1.address, lpToken1.address, 100)).revertedWith("only vault");
-        //     })
-        //     it("revert if invalid input", async() => {
-        //         await expect(BalStrategy.connect(vault).withdraw(user1.address, user2.address, 100)).revertedWith("invalid lp token address");
-        //         await expect(BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, 0)).reverted;
-        //         await expect(BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("100"))).revertedWith("invalid withdraw amount");     //deposited 1 before.
+            it("revert if caller is not Vault", async() => {
+                await expect(BalStrategy.connect(user1).withdraw(user1.address, lpToken1.address, 100)).revertedWith("only vault");
+            })
+            it("revert if invalid input", async() => {
+                await expect(BalStrategy.connect(vault).withdraw(user1.address, user2.address, 100)).revertedWith("invalid lp token address");
+                await expect(BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, 0)).reverted;
+                await expect(BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("100"))).revertedWith("invalid withdraw amount");     //deposited 1 before.
 
-        //     })
-        //     it("withdraw successfully", async() => {
-        //         await BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("1"));
+            })
+            it("withdraw successfully", async() => {
+                await BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("1"));
 
-        //         const user1Balance =await LPToken.balanceOf(user1.address);
-        //         expect(user1Balance).to.be.eq(ethers.utils.parseEther("1"));
-        //     })
-        // })
+                const user1Balance =await LPToken.balanceOf(user1.address);
+                expect(user1Balance).to.be.eq(ethers.utils.parseEther("1"));
+            })
+        })
 
         describe("claim rewards", async() => {
             beforeEach(async() => {
@@ -130,12 +130,12 @@ describe("TokenPool", async () => {
                 await BalStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseEther("1")); 
 
             })
-            // it("revert if caller is not Vault", async() =>  {
-            //     await expect(BalStrategy.connect(user1).claim(user1.address, lpToken1.address)).revertedWith("only vault");
-            // })
-            // it("revert if nothing to claim", async() => {
-            //     await expect(BalStrategy.connect(vault).claim(user1.address, lpToken1.address)).revertedWith("Nothing to Claim");
-            // })
+            it("revert if caller is not Vault", async() =>  {
+                await expect(BalStrategy.connect(user1).claim(user1.address, lpToken1.address)).revertedWith("only vault");
+            })
+            it("revert if nothing to claim", async() => {
+                await expect(BalStrategy.connect(vault).claim(user1.address, lpToken1.address)).revertedWith("Nothing to Claim");
+            })
             it("claim rewards successfully", async() => {
                 await increaseBlockTimestamp(provider, 86400 * 30);
                 await BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseUnits("9", 17));
