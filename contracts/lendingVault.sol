@@ -67,7 +67,9 @@ contract lendingVault is Ownable{
 
         position[lpToken].collateralAmount[msg.sender] += amount;
 
-        IERC20(lpToken).transferFrom(msg.sender, strategy[lpToken], amount);
+        IERC20(lpToken).transferFrom(msg.sender, address(this), amount);
+
+        IERC20(lpToken).approve(strategy[lpToken], amount);
 
         //Deposit LP token to corresponding protocol pool
         IStrategy(strategy[lpToken]).deposit(msg.sender, lpToken, amount);

@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/IBalancerGauge.sol";
+import "hardhat/console.sol";
 
 contract BalancerStrategy is Ownable{
     address public vault;
@@ -12,19 +13,15 @@ contract BalancerStrategy is Ownable{
 
     address public rewardToken;
 
-    struct PoolStaker{
-        uint256 amount;
-        uint256 rewards;
-        uint256 rewardDebt;
+    struct PoolInfo {
+        mapping(address => uint) lastRewardPerToken;
+        mapping(address => uint) rewardBalance;
+        uint256 currentRewardPerToken;
+        mapping(address => uint) depositorBalance;
+        uint256 totalDeposit;
     }
-
-    struct Pool {
-        uint256 tokensStaked;
-        uint256 accumulatedRewardsPerShare;
-    }
-
-    mapping(address => Pool) public pools;  //lpToken -> Pool
-    mapping(address => mapping(address => PoolStaker)) public poolStakers;  // lpToken -> user -> PoolStaker
+    uint256 public rewardRateDecimals = 18;
+    mapping(address => PoolInfo) public poolInfo;
 
     modifier onlyVault() {
         require(msg.sender == vault, "only vault");
@@ -50,16 +47,16 @@ contract BalancerStrategy is Ownable{
         require(amount > 0);
         require(gauges[lpToken] != address(0), "invalid lp token address");
 
+        IERC20(lpToken).transferFrom(msg.sender, address(this), amount);
+
         //update reward state of depositor
         _claim(user, lpToken);
 
-        Pool storage pool = pools[lpToken];
-        PoolStaker storage staker = poolStakers[lpToken][user];
-        // update current user state
-        staker.amount += amount;
-        staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
-        //Update pool state
-        pool.tokensStaked += amount;
+        PoolInfo storage pool = poolInfo[lpToken];
+        pool.depositorBalance[user] += amount;
+        pool.totalDeposit += amount;
+
+        IERC20(lpToken).approve(gauges[lpToken], amount);
 
         IBalancerGauge(gauges[lpToken]).deposit(amount);
     }
@@ -67,71 +64,66 @@ contract BalancerStrategy is Ownable{
     function withdraw(address user, address lpToken, uint256 amount) external onlyVault{
         require(amount > 0);
         require(gauges[lpToken] != address(0), "invalid lp token address");
-                
-        Pool storage pool = pools[lpToken];
-        PoolStaker storage staker = poolStakers[lpToken][user];
 
-        require(staker.amount >= amount, "invalid withdraw amount");
+        PoolInfo storage pool = poolInfo[lpToken];
+        
+        require(pool.depositorBalance[user] >= amount, "invalid withdraw amount");
 
         _claim(user, lpToken);
 
         //update user state
-        staker.amount -= amount;
-        staker.rewardDebt += amount * pool.accumulatedRewardsPerShare / 1e12;
-
-        //update pool
-        pool.tokensStaked -= amount;
+        pool.depositorBalance[user] -= amount;
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
         IBalancerGauge(gauges[lpToken]).withdraw(amount);
         IERC20(lpToken).transfer(user, amount);
     }
 
-    function _claim(address user, address lpToken) internal returns(uint256) {
+    function claim(address user, address lpToken) public onlyVault{
+        require(gauges[lpToken] != address(0), "invalid lp token address");
+
+        _claim(user, lpToken);
+        //transfer reward to user
+        PoolInfo storage pool = poolInfo[lpToken];
+        uint256 rewardClaimed = pool.rewardBalance[user];
+        pool.rewardBalance[user] = 0;
+
+        require(rewardClaimed > 0, "Nothing to Claim");
+
+        IERC20(rewardToken).transfer(user, rewardClaimed);
+    }
+
+    function getRewardUser(address user, address lpToken) external returns (uint256)  {
+        return poolInfo[lpToken].rewardBalance[user];
+    }
+
+    function _claim(address user, address lpToken) internal {
         //Claim reward from Convex
         uint256 amountBefore = IERC20(rewardToken).balanceOf(address(this));
         IBalancerGauge(gauges[lpToken]).claim_rewards(address(this));
         uint256 amountAfter = IERC20(rewardToken).balanceOf(address(this));
 
-        updateRewardState(amountAfter - amountBefore, lpToken);
-        // update user state
-        Pool storage pool = pools[lpToken];
-        PoolStaker storage staker = poolStakers[lpToken][user];
-        uint256 rewardsToHarvest = (staker.amount * pool.accumulatedRewardsPerShare / 1e12) - staker.rewardDebt;
-        if (rewardsToHarvest == 0) {
-            staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
-            return 0;
-        }
-        return rewardsToHarvest;
+        uint256 rewardAmount = amountAfter - amountBefore;
+        console.log("reward claimed", rewardAmount);
+
+        updateRewardPerToken(rewardAmount, lpToken);
+        updateRewardState(user, lpToken);
     }
 
-    function claim(address user, address lpToken) public onlyVault{
-        require(gauges[lpToken] != address(0), "invalid lp token address");
-
-        uint256 rewardsToHarvest = _claim(user, lpToken);
-        require(rewardsToHarvest > 0, "Nothing to Claim");
-        //transfer reward to user
-        Pool storage pool = pools[lpToken];
-        PoolStaker storage staker = poolStakers[lpToken][user];
-
-        staker.rewards = 0;
-        staker.rewardDebt = staker.amount * pool.accumulatedRewardsPerShare / 1e12;
-
-        IERC20(rewardToken).transfer(user, rewardsToHarvest);
+    function updateRewardPerToken(uint256 amount, address lpToken) internal {
+        PoolInfo storage pool = poolInfo[lpToken];
+        if(pool.totalDeposit != 0)
+            pool.currentRewardPerToken += (amount * ( 10 ** rewardRateDecimals)) / pool.totalDeposit;
     }
 
-    function getRewardUser(address user, address lpToken) external returns (uint256)  {
-        uint256 rewardsToHarvest= _claim(user, lpToken);
+    function updateRewardState(address user, address lpToken) internal {
+        PoolInfo storage pool = poolInfo[lpToken];
 
-        return rewardsToHarvest;
-    }
+        pool.rewardBalance[user] +=
+            ((pool.currentRewardPerToken - pool.lastRewardPerToken[user]) *
+                pool.depositorBalance[user]) /
+            (10 ** rewardRateDecimals);
 
-    function updateRewardState(uint256 amount, address lpToken) internal {
-        Pool storage pool = pools[lpToken];
-        if (pool.tokensStaked == 0) {
-            return;
-        }
-        //TODO get earned amount from BalancerGauge
-        pool.accumulatedRewardsPerShare = pool.accumulatedRewardsPerShare + (amount * 1e12 / pool.tokensStaked);
+        pool.lastRewardPerToken[user] = pool.currentRewardPerToken;
     }
 }
