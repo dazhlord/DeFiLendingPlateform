@@ -7,10 +7,10 @@ import "./interfaces/IStableCoin.sol";
 
 contract StableCoin is IStableCoin, ERC20{
     address public owner;
-    mapping(address => bool) public vaults;
+    address public vault;
 
-    modifier onlyVault(address _to) {
-        require(vaults[_to]);
+    modifier onlyVault() {
+        require(vault == msg.sender);
         _;
     }
 
@@ -18,18 +18,18 @@ contract StableCoin is IStableCoin, ERC20{
         owner = msg.sender;
     }
 
-    function mint(address to, uint256 amount) external override onlyVault(msg.sender){
+    function mint(address to, uint256 amount) external override onlyVault{
         require(amount > 0);
         _mint(to, amount);
     }
 
-    function burn(address to, uint256 amount) external override onlyVault(msg.sender){
+    function burn(address to, uint256 amount) external override onlyVault{
         require(amount > 0);
         _burn(to, amount);
     }
 
-    function setVault(address to, bool state) external {
+    function setVault(address _vault) external {
         require(msg.sender == owner);
-        vaults[to] = state;
+        vault = _vault;
     }
 }

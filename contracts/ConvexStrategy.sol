@@ -106,13 +106,11 @@ contract ConvexStrategy is Ownable{
     }
 
     function claim(address user, address lpToken) external onlyVault  {
-        require(poolId[lpToken] != 0, "invalid lp token address");
 
         uint256 _poolId = poolId[lpToken];
         //Claim reward from Convex
         _claim(user, lpToken);
         //transfer reward to user
-        PoolInfo storage pool = poolInfo[_poolId];
         PoolStakerInfo storage poolStaker = poolStakerInfo[_poolId][user];
 
         uint256 crvRewardClaimed = poolStaker.crvRewardBalance;

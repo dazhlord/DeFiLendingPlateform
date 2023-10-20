@@ -12,7 +12,7 @@ async function increaseBlockTimestamp(provider: MockProvider, time: number) {
   await provider.send("evm_mine", []);
 }
 
-describe("TokenPool", async () => {
+describe("Convex Strategy", async () => {
     let owner: SignerWithAddress;
     let vault: SignerWithAddress;
     let user1: SignerWithAddress;
@@ -54,22 +54,22 @@ describe("TokenPool", async () => {
     });
     
     describe("admin role", () => {
-        it("set Gauge failed without admin call", async() => {
+        it("set PoolId failed without admin call", async() => {
             await expect(CvxStrategy.connect(vault).setPoolId(lpToken1.address, poolId1)).reverted;
         });
-        it("set Gauges failed without admin call", async() => {
+        it("set PoolIds failed without admin call", async() => {
             await expect(CvxStrategy.connect(vault).setPoolIds([lpToken1.address], [poolId1])).reverted;
         })
-        it("set Gauges failed wit invalid input", async() => {
+        it("set PoolId failed wit invalid input", async() => {
             await expect(CvxStrategy.connect(vault).setPoolIds([lpToken1.address], [poolId1, 40])).reverted;
         })
-        it("set Gauge successfully", async() => {
+        it("set PoolId successfully", async() => {
             await CvxStrategy.connect(owner).setPoolId(lpToken1.address, poolId1);
 
             const poolId = await CvxStrategy.poolId(lpToken1.address);
             await expect(poolId).to.be.eq(38);
         });
-        it("set Gauges successfully", async() => {
+        it("set PoolIds successfully", async() => {
             await CvxStrategy.connect(owner).setPoolIds([lpToken1.address], [poolId1]);
             const poolId = await CvxStrategy.poolId(lpToken1.address);
             await expect(poolId).to.be.eq(38);
@@ -85,7 +85,7 @@ describe("TokenPool", async () => {
             await LPToken.connect(CvxStrategy.signer).approve(Booster.address, ethers.utils.parseEther("100"));
         })
 
-        describe("deposit functionality", async() => {
+        describe("1. deposit functionality", async() => {
             it("revert if caller is not Vault", async() => {
                 await expect(CvxStrategy.connect(user1).deposit(user1.address, lpToken1.address, 100)).revertedWith("only vault");
             })
@@ -114,7 +114,7 @@ describe("TokenPool", async () => {
             })
         })
 
-        describe("withdraw functionality", async() => {
+        describe("2. withdraw functionality", async() => {
             beforeEach(async() => {
                 await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("10")); 
                 await increaseBlockTimestamp(provider, 86400);
@@ -132,36 +132,33 @@ describe("TokenPool", async () => {
             it("withdraw successfully", async() => {
                 const poolInfo = await Booster.poolInfo(38);
                 console.log("Gauge:", poolInfo.gauge);
-                const gaugeBalanceBefore = await LPToken.balanceOf(poolInfo.gauge);
+                const gaugeBalanceBefore = Number(await LPToken.balanceOf(poolInfo.gauge));
 
                 await CvxStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("10"));
-                const gaugeBalanceAfter = await LPToken.balanceOf(Booster.address);
+                const gaugeBalanceAfter = Number(await LPToken.balanceOf(Booster.address));
                 const user1Balance =await LPToken.balanceOf(user1.address);
 
-                const user1CliamableReward = await CvxStrategy.getClaimableReward(user1.address, lpToken1.address);
+                const user1ClaimableReward = await CvxStrategy.getClaimableReward(user1.address, lpToken1.address);
+                console.log("user1 claimable reward", user1ClaimableReward[0], user1ClaimableReward[1]);
 
-                expect(user1CliamableReward).greaterThan("0");
+                expect(Number(user1ClaimableReward[0]) + Number(user1ClaimableReward[1])).to.be.greaterThan(0);
                 expect(user1Balance).to.be.eq(ethers.utils.parseEther("10"));
-                expect(gaugeBalanceBefore.sub(gaugeBalanceAfter).sub(ethers.utils.parseEther("10"))).greaterThanOrEqual("0");
+                expect(gaugeBalanceBefore - gaugeBalanceAfter- Number(ethers.utils.parseEther("10"))).to.be.greaterThanOrEqual(0);
             })
         })
 
-        describe("claim rewards", async() => {
+        describe("3. claim rewards", async() => {
             beforeEach(async() => {
                 console.log("user1 & user2 depoist first");
-                await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseUnits("10", 17)); 
-                await CvxStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseUnits("10", 17));
+                await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("10")); 
+                await CvxStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseEther("10"));
+                await increaseBlockTimestamp(provider, 86400);
+
             })
             it("revert if caller is not Vault", async() =>  {
                 await expect(CvxStrategy.connect(user1).claim(user1.address, lpToken1.address)).revertedWith("only vault");
             })
-
-            it("revert if invalid lp token", async() => {
-                await expect(CvxStrategy.connect(vault).claim(user1.address, user2.address)).reverted("invalid lp token address");
-            })
             it("claim rewards successfully", async() => {
-                await increaseBlockTimestamp(provider, 86400 * 1);
-
                 console.log("user1 claim1");
 
                 const user1CrvRewardBefore = await CrvToken.balanceOf(user1.address);
@@ -189,23 +186,17 @@ describe("TokenPool", async () => {
                 console.log("user1Reward", user1CrvRewardAfter - user1CrvRewardBefore, user1CvxRewardAfter - user1CvxRewardBefore);
                 console.log("user2Reward", user2CrvRewardAfter - user2CrvRewardBefore, user2CvxRewardAfter - user2CvxRewardBefore);
             })
-            // it("revert if nothing to claim", async() => {
-            //     await CvxStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("10"));
-
-            //     await expect(CvxStrategy.connect(vault).claim(user1.address, lpToken1.address)).revertedWith("Nothing to Claim");
-            // })
             it("user1 deposit again and user2 deposit again and claim reward", async() => {
-                await increaseBlockTimestamp(provider, 86400);
                 console.log("user1 and user 2 claim 1 day later");
                 await CvxStrategy.connect(vault).claim(user1.address, lpToken1.address);
                 await CvxStrategy.connect(vault).claim(user2.address, lpToken1.address);
 
                 console.log("user1 deposit2 again.");
-                await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseUnits("10", 17));
+                await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("10"));
                 await increaseBlockTimestamp(provider, 86400);
 
                 console.log("user2 deposit2 1 day later");
-                await CvxStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseUnits("10", 17));
+                await CvxStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseEther("10"));
                 await increaseBlockTimestamp(provider, 86400);
 
                 console.log("user1 and user 2 claims 1 day later");

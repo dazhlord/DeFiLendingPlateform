@@ -10,5 +10,5 @@ interface IStableCoin is IERC20{
 
     function burn(address to, uint256 amount) external;
 
-    function setVault(address to, bool state) external;
+    function setVault(address) external;
 }

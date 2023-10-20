@@ -104,7 +104,6 @@ contract BalancerStrategy is Ownable{
         uint256 amountAfter = IERC20(rewardToken).balanceOf(address(this));
 
         uint256 rewardAmount = amountAfter - amountBefore;
-        console.log("reward claimed", rewardAmount);
 
         updateRewardPerToken(rewardAmount, lpToken);
         updateRewardState(user, lpToken);
