@@ -87,14 +87,13 @@ contract BalancerStrategy is Ownable{
         //transfer reward to user
         PoolInfo storage pool = poolInfo[lpToken];
         uint256 rewardClaimed = pool.rewardBalance[user];
-        pool.rewardBalance[user] = 0;
-
         require(rewardClaimed > 0, "Nothing to Claim");
+        pool.rewardBalance[user] = 0;
 
         IERC20(rewardToken).transfer(user, rewardClaimed);
     }
 
-    function getRewardUser(address user, address lpToken) external returns (uint256)  {
+    function getClaimableReward(address user, address lpToken) external view returns (uint256)  {
         return poolInfo[lpToken].rewardBalance[user];
     }
 
@@ -114,7 +113,7 @@ contract BalancerStrategy is Ownable{
     function updateRewardPerToken(uint256 amount, address lpToken) internal {
         PoolInfo storage pool = poolInfo[lpToken];
         if(pool.totalDeposit != 0)
-            pool.currentRewardPerToken += (amount / ( 10 ** rewardRateDecimals)) / pool.totalDeposit;
+            pool.currentRewardPerToken += (amount * ( 10 ** rewardRateDecimals)) / pool.totalDeposit;
     }
 
     function updateRewardState(address user, address lpToken) internal {
@@ -122,7 +121,7 @@ contract BalancerStrategy is Ownable{
 
         pool.rewardBalance[user] +=
             ((pool.currentRewardPerToken - pool.lastRewardPerToken[user]) *
-                pool.depositorBalance[user]) *
+                pool.depositorBalance[user]) /
             (10 ** rewardRateDecimals);
 
         pool.lastRewardPerToken[user] = pool.currentRewardPerToken;

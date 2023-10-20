@@ -18,4 +18,6 @@ interface ICvxBooster {
 
     function withdraw(uint256 _pid, uint256 _amount) external returns(bool);
     function stakerRewards() external view returns(address);
+
+    function staker() external view returns(address);
 }

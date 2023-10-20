@@ -155,8 +155,8 @@ describe("TokenPool", async () => {
             it("claim rewards successfully", async() => {
                 await BalStrategy.connect(vault).claim(user1.address, lpToken1.address);
 
-                const user1Reward = await BalStrategy.getRewardUser(user1.address, lpToken1.address);
-                const user2Reward = await BalStrategy.getRewarduser(user2.address, lpToken1.address);
+                const user1Reward = await BalStrategy.getClaimableReward(user1.address, lpToken1.address);
+                const user2Reward = await BalStrategy.getClaimableReward(user2.address, lpToken1.address);
 
                 console.log("user1Reward", user1Reward);
                 console.log("user2Reward", user2Reward);
@@ -175,8 +175,8 @@ describe("TokenPool", async () => {
 
                 await BalStrategy.connect(vault).claim(user1.address, lpToken1.address);
                 
-                const user1Reward = await BalStrategy.getRewardUser(user1.address, lpToken1.address);
-                const user2Reward = await BalStrategy.getRewarduser(user2.address, lpToken1.address);
+                const user1Reward = await BalStrategy.getClaimableReward(user1.address, lpToken1.address);
+                const user2Reward = await BalStrategy.getClaimableReward(user2.address, lpToken1.address);
 
                 expect(user1Reward).to.be.eq(user2Reward * 2);
             })

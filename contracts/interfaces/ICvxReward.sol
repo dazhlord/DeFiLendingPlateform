@@ -12,6 +12,7 @@ interface ICvxReward{
     //claim rewards
     function getReward(address user, bool state) external ;
     function getReward() external;
+    function getReward(bool) external;
     //stake a convex tokenized deposit
     function stake(uint256 _amount) external;
     //stake a convex tokenized deposit for another address(transfering ownership)
