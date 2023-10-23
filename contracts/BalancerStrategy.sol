@@ -5,13 +5,15 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/IBalancerGauge.sol";
+import "./interfaces/IBalancerMinter.sol";
 import "hardhat/console.sol";
 
-contract BalancerStrategy is Ownable{
+contract BalancerStrategy is Ownable {
     address public vault;
-    mapping(address =>address) public gauges; // lpToken - > Gauge address
+    mapping(address => address) public gauges; // lpToken - > Gauge address
 
-    address public rewardToken;
+    address public bal = address(0xba100000625a3754423978a60c9317c58a424e3D);
+    address public constant BAL_MINTER = address(0x239e55F427D44C3cc793f49bFB507ebe76638a2b);
 
     struct PoolInfo {
         mapping(address => uint) lastRewardPerToken;
@@ -27,23 +29,29 @@ contract BalancerStrategy is Ownable{
         require(msg.sender == vault, "only vault");
         _;
     }
-    
-    constructor(address _lendingVault, address _rewardToken) {
+
+    constructor(address _lendingVault) {
         vault = _lendingVault;
-        rewardToken = _rewardToken;
     }
 
     function setGauge(address lpToken, address gauge) external onlyOwner {
         gauges[lpToken] = gauge;
     }
 
-    function setGauges(address[] memory lpTokens, address[] memory _gauges) external onlyOwner {
+    function setGauges(
+        address[] memory lpTokens,
+        address[] memory _gauges
+    ) external onlyOwner {
         require(lpTokens.length == _gauges.length, "invalid input");
-        for(uint i =0 ; i < lpTokens.length; i ++)
-        gauges[lpTokens[i]] = _gauges[i];
+        for (uint i = 0; i < lpTokens.length; i++)
+            gauges[lpTokens[i]] = _gauges[i];
     }
 
-    function deposit(address user, address lpToken, uint256 amount) external onlyVault{
+    function deposit(
+        address user,
+        address lpToken,
+        uint256 amount
+    ) external onlyVault {
         require(amount > 0);
         require(gauges[lpToken] != address(0), "invalid lp token address");
 
@@ -56,18 +64,26 @@ contract BalancerStrategy is Ownable{
         pool.depositorBalance[user] += amount;
         pool.totalDeposit += amount;
 
+        IERC20(lpToken).approve(gauges[lpToken], 0);
         IERC20(lpToken).approve(gauges[lpToken], amount);
 
         IBalancerGauge(gauges[lpToken]).deposit(amount);
     }
-    
-    function withdraw(address user, address lpToken, uint256 amount) external onlyVault{
+
+    function withdraw(
+        address user,
+        address lpToken,
+        uint256 amount
+    ) external onlyVault {
         require(amount > 0);
         require(gauges[lpToken] != address(0), "invalid lp token address");
 
         PoolInfo storage pool = poolInfo[lpToken];
-        
-        require(pool.depositorBalance[user] >= amount, "invalid withdraw amount");
+
+        require(
+            pool.depositorBalance[user] >= amount,
+            "invalid withdraw amount"
+        );
 
         _claim(user, lpToken);
 
@@ -78,9 +94,10 @@ contract BalancerStrategy is Ownable{
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
         IBalancerGauge(gauges[lpToken]).withdraw(amount);
         IERC20(lpToken).transfer(user, amount);
+        
     }
 
-    function claim(address user, address lpToken) public onlyVault{
+    function claim(address user, address lpToken) public onlyVault {
         require(gauges[lpToken] != address(0), "invalid lp token address");
 
         _claim(user, lpToken);
@@ -90,29 +107,35 @@ contract BalancerStrategy is Ownable{
         require(rewardClaimed > 0, "Nothing to Claim");
         pool.rewardBalance[user] = 0;
 
-        IERC20(rewardToken).transfer(user, rewardClaimed);
+        IERC20(bal).transfer(user, rewardClaimed);
     }
 
-    function getClaimableReward(address user, address lpToken) external view returns (uint256)  {
+    function getClaimableReward(
+        address user,
+        address lpToken
+    ) external view returns (uint256) {
         return poolInfo[lpToken].rewardBalance[user];
     }
 
     function _claim(address user, address lpToken) internal {
+
+        uint256 tokenToMint = IBalancerGauge(gauges[lpToken]).integrate_fraction(address(this));
+        console.log("tokenToMint", tokenToMint);
+
         //Claim reward from Convex
-        uint256 amountBefore = IERC20(rewardToken).balanceOf(address(this));
+        uint256 rewards = IBalancerMinter(BAL_MINTER).mint(gauges[lpToken]);
         IBalancerGauge(gauges[lpToken]).claim_rewards(address(this));
-        uint256 amountAfter = IERC20(rewardToken).balanceOf(address(this));
 
-        uint256 rewardAmount = amountAfter - amountBefore;
-
-        updateRewardPerToken(rewardAmount, lpToken);
+        updateRewardPerToken(rewards, lpToken);
         updateRewardState(user, lpToken);
     }
 
     function updateRewardPerToken(uint256 amount, address lpToken) internal {
         PoolInfo storage pool = poolInfo[lpToken];
-        if(pool.totalDeposit != 0)
-            pool.currentRewardPerToken += (amount * ( 10 ** rewardRateDecimals)) / pool.totalDeposit;
+        if (pool.totalDeposit != 0)
+            pool.currentRewardPerToken +=
+                (amount * (10 ** rewardRateDecimals)) /
+                pool.totalDeposit;
     }
 
     function updateRewardState(address user, address lpToken) internal {
