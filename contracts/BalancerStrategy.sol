@@ -68,7 +68,6 @@ contract BalancerStrategy is Ownable {
         IERC20(lpToken).approve(gauges[lpToken], amount);
 
         IBalancerGauge(gauges[lpToken]).deposit(amount);
-        console.log("Deposit: gaugeBalance", IBalancerGauge(gauges[lpToken]).balanceOf(address(this)));
     }
 
     function withdraw(
@@ -94,7 +93,6 @@ contract BalancerStrategy is Ownable {
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
         IBalancerGauge(gauges[lpToken]).withdraw(amount);
-        console.log("withdraw: gaugeBalance", IBalancerGauge(gauges[lpToken]).balanceOf(address(this)));
         IERC20(lpToken).transfer(user, amount);
         
     }
@@ -125,17 +123,10 @@ contract BalancerStrategy is Ownable {
         console.log("tokenToMint", tokenToMint);
 
         //Claim reward from Convex
-        uint256 amountBefore = IERC20(bal).balanceOf(address(this));
-        // (bool success,) = address(this).call{ value: 0 }(abi.encodeWithSignature("mint(address)", gauges[lpToken]));
         uint256 rewards = IBalancerMinter(BAL_MINTER).mint(gauges[lpToken]);
         IBalancerGauge(gauges[lpToken]).claim_rewards(address(this));
-        uint256 amountAfter = IERC20(bal).balanceOf(address(this));
-        console.log("amountAfter:", amountAfter);
 
-        uint256 rewardAmount = amountAfter - amountBefore;
-        console.log("claimedReward: ", rewardAmount);
-
-        updateRewardPerToken(rewardAmount, lpToken);
+        updateRewardPerToken(rewards, lpToken);
         updateRewardState(user, lpToken);
     }
 
