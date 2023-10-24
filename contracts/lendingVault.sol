@@ -97,11 +97,9 @@ contract LendingVault is Ownable {
 
     // borrow stable coin based on collateral
     function borrow(address lpToken, uint256 amount) external {
-        require(validateBorrow(lpToken, msg.sender, amount));
-
         updateDebtInterest(msg.sender, lpToken);
-        // updateTreasuryFee(msg.sender, lpToken);
 
+        require(validateBorrow(lpToken, msg.sender, amount));
         LPStaker storage staker = stakers[lpToken][msg.sender];
         staker.borrowAmount += amount;
         IStableCoin(sToken).mint(msg.sender, amount);
@@ -116,9 +114,10 @@ contract LendingVault is Ownable {
         if (amountWithdraw == type(uint256).max)
             amountWithdraw = staker.collateralAmount;
 
+        updateDebtInterest(msg.sender, lpToken);
+
         validateWithdraw(lpToken, msg.sender, amountWithdraw);
 
-        updateDebtInterest(msg.sender, lpToken);
         // updateTreasuryFee(msg.sender, lpToken);
 
         staker.collateralAmount -= amountWithdraw;
@@ -135,21 +134,18 @@ contract LendingVault is Ownable {
 
     //repay borrowed assets to protocol
     function repay(address lpToken, uint256 amount) external {
-        validateRepay(lpToken, msg.sender, amount);
-
-        console.log("borrowAmount when Repay: ", stakers[lpToken][msg.sender].borrowAmount);
-
-        uint256 debtAmount = debt(msg.sender, lpToken);
-
         updateDebtInterest(msg.sender, lpToken);
 
+        validateRepay(lpToken, msg.sender, amount);
+
+        uint256 debtAmount = debt(msg.sender, lpToken);
         uint256 repayAmount = amount;
         if (debtAmount < amount) repayAmount = debtAmount;
 
         LPStaker storage staker = stakers[lpToken][msg.sender];
 
-        treasuryFee += staker.debtInterest;
-        staker.borrowAmount -= repayAmount - staker.debtInterest;
+        treasuryFee += staker.debtInterest / 10 ** INTEREST_DECIMALS;
+        staker.borrowAmount -= repayAmount - staker.debtInterest / 10 ** INTEREST_DECIMALS;
         staker.debtInterest = 0;
 
         IERC20(sToken).transferFrom(msg.sender, address(this), repayAmount);
@@ -162,6 +158,8 @@ contract LendingVault is Ownable {
         address user,
         uint256 liquidationAmount
     ) external {
+        updateDebtInterest(user, lpToken);
+
         validateLiquidation(lpToken, user, liquidationAmount);
 
         uint256 penaltyAmount = (liquidationAmount *
@@ -178,12 +176,10 @@ contract LendingVault is Ownable {
             liquidationAmount + penaltyAmount / 2,
             lpToken
         );
-
-        updateDebtInterest(user, lpToken);
         
-        treasuryFee += stakerBorrower.debtInterest;
+        treasuryFee += stakerBorrower.debtInterest / 10** INTEREST_DECIMALS;
 
-        stakerBorrower.borrowAmount -= liquidationAmount - stakerBorrower.debtInterest;
+        stakerBorrower.borrowAmount -= liquidationAmount - stakerBorrower.debtInterest / INTEREST_DECIMALS;
         stakerBorrower.debtInterest = 0;
         treasuryFee += penaltyAmount / 2;
 
@@ -212,10 +208,9 @@ contract LendingVault is Ownable {
         address borrower,
         address lpToken
     ) public view returns (uint256) {
-        console.log("borrowAmount: ", stakers[lpToken][borrower].debtInterest);
         return
             stakers[lpToken][borrower].borrowAmount  + 
-                stakers[lpToken][borrower].debtInterest;
+                stakers[lpToken][borrower].debtInterest / 10 ** INTEREST_DECIMALS;
     }
 
     function getBorrowableAmount(address user, address lpToken) public view returns(uint256) {
@@ -280,7 +275,7 @@ contract LendingVault is Ownable {
         uint256 amount
     ) internal view returns (bool) {
         require(amount > 0 && amount <= IERC20(sToken).balanceOf(user));
-        uint256 debtFee = stakers[lpToken][user].debtInterest;
+        uint256 debtFee = stakers[lpToken][user].debtInterest / 10 ** INTEREST_DECIMALS;
 
         require(debtFee > 0, "ERR_REPAY_NO_BORROWED");
         require(amount >= debtFee, "ERR_REPAY_TOO_SMALL_AMOUNT");
@@ -316,5 +311,6 @@ contract LendingVault is Ownable {
                     1 days)) /
             365;
         staker.lastUpdate = block.timestamp;
+        console.log("debtInterest:", staker.debtInterest);
     }
 }

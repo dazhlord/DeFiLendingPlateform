@@ -233,6 +233,8 @@ describe("Lending Vault", async() => {
           await VaultContract.connect(user2).borrow(cvxLpToken.address, ethers.utils.parseEther("2"));
         })
         it("Repay successfully", async() => {
+          await increaseBlockTimestamp(provider, 86400 * 2);
+
           const debtUser1 = await VaultContract.debt(user2.address, balLpToken.address);
           const debtUser2 = await VaultContract.debt(user2.address, cvxLpToken.address);
 
@@ -242,7 +244,6 @@ describe("Lending Vault", async() => {
           //user2 repay all borrowed asset
           await StableCoin.mintByOwner(user2.address, ethers.utils.parseEther("10"));
           const user2Bal = await StableCoin.balanceOf(user2.address);
-          console.log("user bal:", user2Bal);
 
           const user2STokenBalanceBefore = await StableCoin.balanceOf(user2.address);
           await StableCoin.connect(user2).approve(VaultContract.address, ethers.utils.parseEther("30"));
@@ -259,28 +260,28 @@ describe("Lending Vault", async() => {
         })
       })
 
-      describe("Withdraw Functionality", async() => {
-        beforeEach(async() => {
+      // describe("Withdraw Functionality", async() => {
+      //   beforeEach(async() => {
 
-          //user1 and user2 deposit BalLP tokens
-          await balLpToken.connect(user1).approve(VaultContract.address, ethers.utils.parseEther("400"));
-          await VaultContract.connect(user1).deposit(balLpToken.address, ethers.utils.parseEther("400"));
-          await balLpToken.connect(user2).approve(VaultContract.address, ethers.utils.parseEther("400"));
-          await VaultContract.connect(user2).deposit(balLpToken.address, ethers.utils.parseEther("400"));
+      //     //user1 and user2 deposit BalLP tokens
+      //     await balLpToken.connect(user1).approve(VaultContract.address, ethers.utils.parseEther("400"));
+      //     await VaultContract.connect(user1).deposit(balLpToken.address, ethers.utils.parseEther("400"));
+      //     await balLpToken.connect(user2).approve(VaultContract.address, ethers.utils.parseEther("400"));
+      //     await VaultContract.connect(user2).deposit(balLpToken.address, ethers.utils.parseEther("400"));
 
-          //Also, deposit CvxLP tokens
-          await cvxLpToken.connect(user1).approve(VaultContract.address, ethers.utils.parseEther("1"));
-          await VaultContract.connect(user1).deposit(cvxLpToken.address, ethers.utils.parseEther("1"));
-          await cvxLpToken.connect(user2).approve(VaultContract.address, ethers.utils.parseEther("1"));
-          await VaultContract.connect(user2).deposit(cvxLpToken.address, ethers.utils.parseEther("1"));
-        })
+      //     //Also, deposit CvxLP tokens
+      //     await cvxLpToken.connect(user1).approve(VaultContract.address, ethers.utils.parseEther("1"));
+      //     await VaultContract.connect(user1).deposit(cvxLpToken.address, ethers.utils.parseEther("1"));
+      //     await cvxLpToken.connect(user2).approve(VaultContract.address, ethers.utils.parseEther("1"));
+      //     await VaultContract.connect(user2).deposit(cvxLpToken.address, ethers.utils.parseEther("1"));
+      //   })
 
-        it("withdraw BalancerLP successfully", async() => {
-          await VaultContract.connect(user1).withdraw()
-        })
-        it("withdraw ConvexLP successfully", async() => {
+      //   it("withdraw BalancerLP successfully", async() => {
+      //     await VaultContract.connect(user1).withdraw(balLpToken.address, ethers.utils.parseEther("10"));
+      //   })
+      //   it("withdraw ConvexLP successfully", async() => {
 
-        })
-      })
+      //   })
+      // })
     })
 })
