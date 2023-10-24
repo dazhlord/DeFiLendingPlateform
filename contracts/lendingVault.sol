@@ -9,7 +9,7 @@ import "./interfaces/IStableCoin.sol";
 import "./interfaces/IPriceOracle.sol";
 import "./interfaces/IStrategy.sol";
 
-contract lendingVault is Ownable {
+contract LendingVault is Ownable {
     address public sToken;
     uint256 public interestRate;
     address public treasury;
@@ -64,7 +64,7 @@ contract lendingVault is Ownable {
             strategy[lpTokens[i]] = _strategies[i];
     }
 
-    function setInterstRate(uint256 _rate) external onlyOwner {
+    function setInterestRate(uint256 _rate) external onlyOwner {
         interestRate = _rate;
     }
 
