@@ -29,6 +29,7 @@ describe("Convex Strategy", async () => {
 
     let CvxToken : Contract;
     let CrvToken : Contract;
+    let PriceOracle: Contract;
 
     beforeEach(async () => {
         [owner, vault, user1, user2] = await ethers.getSigners();
@@ -41,13 +42,21 @@ describe("Convex Strategy", async () => {
         lpToken1 = await ethers.getSigner("0xc4AD29ba4B3c580e6D59105FFf484999997675Ff"); //WBTC_LP_TOKEN_ADDRESS
         poolId1 = 38;       //WBTC_LP_TOKEN POOL id
         tokenOwner = await ethers.getImpersonatedSigner("0x347140c7F001452e6A60131D24b37103D0e34231");
-        //get pool tokens for deposit to vault
+
+        const priceOracle = await ethers.getContractFactory("MockOracle");
+        PriceOracle = await priceOracle.deploy();
+        await PriceOracle.deployed();
+        
+        await PriceOracle.setPrice(CvxToken.address, 100);
+        await PriceOracle.setPrice(CrvToken.address, 100);
+        await PriceOracle.setPrice(lpToken1.address, 4);
+        //get pool tokens to deposit to vault
         LPToken = await ethers.getContractAt("ERC20", lpToken1.address);
         const userBalance = await LPToken.balanceOf(vault.address);
         console.log("userBalance:", userBalance);
         const _cvxStrategy = await ethers.getContractFactory("ConvexStrategy");
         CvxStrategy = await _cvxStrategy.connect(owner).deploy(
-        vault.address
+        vault.address, PriceOracle.address
         );
         await CvxStrategy.deployed();
     });
@@ -126,9 +135,6 @@ describe("Convex Strategy", async () => {
                 console.log("beforeClaim: ", pool.totalDeposit);
                 console.log("user1 & user2 depoist first");
             })
-            it("revert if caller is not Vault", async() =>  {
-                await expect(CvxStrategy.connect(user1).claim(user1.address, lpToken1.address)).revertedWith("only vault");
-            })
             it("claim rewards successfully", async() => {
                 console.log("user1 claim1");
                 await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1")); 
@@ -182,10 +188,10 @@ describe("Convex Strategy", async () => {
 
                 const user1CrvRewardBefore = await CrvToken.balanceOf(user1.address);
                 const user1CvxRewardBefore = await CvxToken.balanceOf(user1.address);
-                const user2CrvRewardBefore = await CrvToken.balanceOf(user2.address);
-                const user2CvxRewardBefore = await CvxToken.balanceOf(user2.address);
 
                 await CvxStrategy.connect(vault).claim(user1.address, lpToken1.address);
+                const user2CrvRewardBefore = await CrvToken.balanceOf(user2.address);
+                const user2CvxRewardBefore = await CvxToken.balanceOf(user2.address);
                 await CvxStrategy.connect(vault).claim(user2.address, lpToken1.address);
 
                 const user1CrvRewardAfter = await CrvToken.balanceOf(user1.address);
@@ -200,6 +206,9 @@ describe("Convex Strategy", async () => {
 
                 expect(user1CrvReward - user2CrvReward * 2).to.be.lessThanOrEqual(Number(ethers.utils.parseUnits("1", 14)));
                 expect(user1CvxReward - user2CvxReward * 2).to.be.lessThanOrEqual(Number(ethers.utils.parseUnits("1", 14)));
+            })
+            it("revert if caller is not Vault", async() =>  {
+                await expect(CvxStrategy.connect(user1).claim(user1.address, lpToken1.address)).revertedWith("only vault");
             })
         })
         
@@ -227,9 +236,11 @@ describe("Convex Strategy", async () => {
                 const user1Balance =await LPToken.balanceOf(user1.address);
 
                 const user1ClaimableReward = await CvxStrategy.getClaimableReward(user1.address, lpToken1.address);
-                console.log("user1 claimable reward", user1ClaimableReward[0], user1ClaimableReward[1]);
+                console.log("user1 claimable reward:", user1ClaimableReward[0], user1ClaimableReward[1]);
+                const user1ClaimableRewardInUSD = await CvxStrategy.getClaimableRewardInUSD(user1.address, lpToken1.address);
 
-                // expect(Number(user1ClaimableReward[0]) + Number(user1ClaimableReward[1])).to.be.greaterThan(0);
+                console.log("user1 claimable reward in USD :", user1ClaimableRewardInUSD);
+
                 expect(user1Balance).to.be.eq(ethers.utils.parseEther("1"));
                 expect(gaugeBalanceBefore - gaugeBalanceAfter- Number(ethers.utils.parseEther("1"))).to.be.greaterThanOrEqual(0);
             })

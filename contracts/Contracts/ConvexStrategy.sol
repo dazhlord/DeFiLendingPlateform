@@ -6,9 +6,9 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "hardhat/console.sol";
 
-import "./interfaces/Convex/ICvxBooster.sol";
-import "./interfaces/Convex/ICvxReward.sol";
-import "./interfaces/Oracle/IPriceOracle.sol";
+import "./interfaces/ICvxBooster.sol";
+import "./interfaces/ICvxReward.sol";
+import "./interfaces/IPriceOracle.sol";
 
 contract ConvexStrategy is Ownable{
     using SafeERC20 for IERC20;
