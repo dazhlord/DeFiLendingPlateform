@@ -4,9 +4,9 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "./interfaces/Balancer/IBalancerGauge.sol";
-import "./interfaces/Balancer/IBalancerMinter.sol";
-import "./interfaces/Oracle/IPriceOracle.sol";
+import "./interfaces/IBalancerGauge.sol";
+import "./interfaces/IBalancerMinter.sol";
+import "./interfaces/IPriceOracle.sol";
 import "hardhat/console.sol";
 
 contract BalancerStrategy is Ownable {

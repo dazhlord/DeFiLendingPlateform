@@ -127,7 +127,7 @@ describe("Lending Vault", async () => {
           balLpToken.address,
           BalStrategy.address
         )
-      ).reverted;
+      ).to.be.reverted;
     });
     it("set Strategy successfully", async () => {
       await VaultContract.setStrategy(balLpToken.address, BalStrategy.address);
@@ -142,13 +142,16 @@ describe("Lending Vault", async () => {
       const balAddr = await VaultContract.strategy(balLpToken.address);
       expect(balAddr).to.be.eq(BalStrategy.address);
     });
+    it("set Strategies failed with invalid input", async() => {
+      await expect(VaultContract.setStrategies([balLpToken.address], [BalStrategy.address, CvxStrategy.address])).revertedWith("ERR_INVALID_INPUT");
+      })
     it("set Strategies failed without admin call", async () => {
       await expect(
         VaultContract.connect(user1).setStrategies(
           [balLpToken.address],
           [BalStrategy.address]
         )
-      ).reverted;
+      ).to.be.reverted;
     });
     it("set InterestRate failed without admin call", async () => {
       await expect(VaultContract.connect(user1).setInterestRate(5)).reverted;
@@ -158,6 +161,9 @@ describe("Lending Vault", async () => {
       const interestRate = await VaultContract.interestRate();
       expect(interestRate).to.be.eq(5);
     });
+    it("set StrategyInfo failed without admin call", async() => {
+      await expect(VaultContract.connect(user1.address).setStrategyInfo(balLpToken.address, 30, 40, 2)).to.be.reverted;
+    })
   });
 
   describe("Main functionality", async () => {
@@ -583,6 +589,27 @@ describe("Lending Vault", async () => {
         // expect(user1InfoBefore.borrowAmount.sub(user1InfoAfter.borrowAmount)).to.be.eq(ethers.utils.parseEther("30").sub(user1InfoAfter.debtInterest));
         expect(treasuryBalance).to.be.eq(penaltyAmount.div(2).div(2));
       });
+      it("Accrue functionality", async() => {
+        console.log("accrue1");
+        await increaseBlockTimestamp(provider, 86400 * 15);
+        await StableCoin.mintByOwner(
+          user3.address,
+          ethers.utils.parseEther("100")
+        );
+        console.log("accrue2");
+        await VaultContract.connect(user3).liquidation(
+          balLpToken.address,
+          user1.address,
+          ethers.utils.parseEther("30")
+        );
+        console.log("accrue3");
+
+        await increaseBlockTimestamp(provider, 86400 * 15);
+
+        await VaultContract.accrue();
+        const treasuryBalance = await StableCoin.balanceOf(owner.address);
+        console.log("treasuryBalance:", treasuryBalance);
+      })
     });
   });
   describe("revert cases", async () => {
@@ -682,7 +709,7 @@ describe("Lending Vault", async () => {
       await expect(
         VaultContract.connect(user1).withdraw(
           balLpToken.address,
-          ethers.utils.parseEther("4")
+          ethers.utils.parseEther("2")
         )
       ).revertedWith("ERR_WITHDRAW_GOES_OVER_LTV");
     });
@@ -704,7 +731,7 @@ describe("Lending Vault", async () => {
         )
       ).revertedWith("ERR_REPAY_NO_BORROWED");
     });
-    it("Repay failed if repay amount is maller than debt fee", async () => {
+    it("Repay failed if repay amount is smaller than debt fee", async () => {
       await balLpToken
         .connect(user1)
         .approve(VaultContract.address, ethers.utils.parseEther("100"));
@@ -721,6 +748,25 @@ describe("Lending Vault", async () => {
         VaultContract.connect(user1).repay(balLpToken.address, 100)
       ).revertedWith("ERR_REPAY_TOO_SMALL_AMOUNT");
     });
+    it("Repay failed if repay amount is too big", async() => {
+      await balLpToken
+        .connect(user1)
+        .approve(VaultContract.address, ethers.utils.parseEther("100"));
+      await VaultContract.connect(user1).deposit(
+        balLpToken.address,
+        ethers.utils.parseEther("5")
+      );
+      await VaultContract.connect(user1).borrow(
+        balLpToken.address,
+        ethers.utils.parseEther("5")
+      );
+      await increaseBlockTimestamp(provider, 86400 * 2);
+      await StableCoin.mintByOwner(user1.address, ethers.utils.parseEther("50"));
+      await expect(
+        VaultContract.connect(user1).repay(balLpToken.address, ethers.utils.parseEther("30"))
+      ).revertedWith("ERR_REPAY_TOO_BIG_AMOUNT");
+    })
+
     it("Liquidation failed if invalid input", async () => {
       await expect(
         VaultContract.connect(user1).liquidation(
@@ -795,6 +841,36 @@ describe("Lending Vault", async () => {
           100
         )
       ).revertedWith("ERR_LIQUIDATION_TOO_SMALL_AMOUNT");
+    });
+    it("Liquidation failed if amount is bigger than 50% of position", async () => {
+      await VaultContract.setInterestRate(5000);
+      //user1 and user2 deposit BalLP tokens
+      await balLpToken
+        .connect(user1)
+        .approve(VaultContract.address, ethers.utils.parseEther("40"));
+      await VaultContract.connect(user1).deposit(
+        balLpToken.address,
+        ethers.utils.parseEther("5")
+      );
+      await increaseBlockTimestamp(provider, 86400 * 2);
+      await VaultContract.connect(user1).borrow(
+        balLpToken.address,
+        ethers.utils.parseEther("7")
+      );
+
+      await increaseBlockTimestamp(provider, 86400 * 30);
+      await StableCoin.mintByOwner(
+        user3.address,
+        ethers.utils.parseEther("100")
+      );
+
+      await expect(
+        VaultContract.connect(user3).liquidation(
+          balLpToken.address,
+          user1.address,
+          ethers.utils.parseEther("8")
+        )
+      ).revertedWith("ERR_LIQUIDATION_TOO_BIG_AMOUNT");
     });
   });
 });

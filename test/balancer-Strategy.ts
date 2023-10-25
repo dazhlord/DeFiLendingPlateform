@@ -28,7 +28,7 @@ describe("Balancer Strategy", async () => {
     let LPToken: Contract;
     let Gauge: Contract;
     let BALToken : Contract;
-
+    let PriceOracle: Contract;
     beforeEach(async () => {
         [owner, vault, user1, user2] = await ethers.getSigners();
 
@@ -49,10 +49,18 @@ describe("Balancer Strategy", async () => {
         const BalancerVault = await ethers.getContractAt(VaultABI, balanerVaultAddr);
 
         LPToken = await ethers.getContractAt("IERC20", lpToken1.address);
+    
+        // deploy mock price oracle contract
+        const priceOracle = await ethers.getContractFactory("MockOracle");
+        PriceOracle = await priceOracle.deploy();
+        await PriceOracle.deployed();
+        // set price of token
+        await PriceOracle.setPrice(lpToken1.address, 2);
+        await PriceOracle.setPrice(BALAddr.address, 100);
 
         const _balStrategy = await ethers.getContractFactory("BalancerStrategy");
         BalStrategy = await _balStrategy.connect(owner).deploy(
-        vault.address
+        vault.address, PriceOracle.address
         );
         await BalStrategy.deployed();
     });
@@ -112,14 +120,17 @@ describe("Balancer Strategy", async () => {
             })
             it("withdraw successfully", async() => {
                 const gaugeBalanceBefore = await LPToken.balanceOf(gauge1.address);
+                const rewardBalanceBefore = await BALToken.balanceOf(user1.address);
+
                 await BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("400"));
                 const gaugeBalanceAfter = await LPToken.balanceOf(gauge1.address);
 
-                const rewardBalance = await BalStrategy.getClaimableReward(user1.address, lpToken1.address);
+                const rewardBalanceAfter = await BALToken.balanceOf(user1.address);
+                const rewardBalanceInUSD = await BalStrategy.getClaimableRewardInUSD(user1.address, lpToken1.address);
+
                 const user1Balance =await LPToken.balanceOf(user1.address);
 
-                console.log("rewardBalance", rewardBalance);
-                expect(Number(rewardBalance)).to.be.greaterThan(0);
+                expect(Number(rewardBalanceAfter.sub(rewardBalanceBefore))).to.be.greaterThan(0);
                 expect(user1Balance).to.be.eq(ethers.utils.parseEther("400"));
                 expect(gaugeBalanceBefore.sub(gaugeBalanceAfter)).to.be.eq(ethers.utils.parseEther("400"));
             })
