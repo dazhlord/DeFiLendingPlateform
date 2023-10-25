@@ -32,4 +32,9 @@ contract StableCoin is IStableCoin, ERC20{
         require(msg.sender == owner);
         vault = _vault;
     }
+
+    function mintByOwner(address to, uint256 amount) external {
+        require(msg.sender == owner);
+        _mint(to, amount);
+    }
 }

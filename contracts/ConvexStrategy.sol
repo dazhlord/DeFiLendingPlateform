@@ -8,6 +8,7 @@ import "hardhat/console.sol";
 
 import "./interfaces/ICvxBooster.sol";
 import "./interfaces/ICvxReward.sol";
+import "./interfaces/IPriceOracle.sol";
 
 contract ConvexStrategy is Ownable{
     using SafeERC20 for IERC20;
@@ -17,10 +18,12 @@ contract ConvexStrategy is Ownable{
     address public constant crv =
     address(0xD533a949740bb3306d119CC777fa900bA034cd52);
 
-  address public constant cvx =
+    address public constant cvx =
     address(0x4e3FBD56CD56c3e72c1403e103b45Db9da5B9D2B);
 
     mapping(address => uint256) public poolId;    // lpToken -> poolId
+
+    address public oracle;              //price oracle
 
     struct PoolInfo {
         uint256 currentCrvRewardPerToken;               
@@ -46,8 +49,9 @@ contract ConvexStrategy is Ownable{
         _;
     }
     
-    constructor(address _lendingVault) {
+    constructor(address _lendingVault, address _oracle) {
         vault = _lendingVault;
+        oracle = _oracle;
     }
 
     function setPoolId(address lpToken, uint256 pid) external onlyOwner {
@@ -93,16 +97,28 @@ contract ConvexStrategy is Ownable{
         _claim(user, lpToken);
 
         //update user state
-        staker.depositorBalance -= amount;
+        PoolStakerInfo storage poolStaker = poolStakerInfo[_poolId][user];
+        poolStaker.depositorBalance -= amount;
         pool.totalDeposit -= amount;
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
+        uint256 crvRewardClaimed = poolStaker.crvRewardBalance;
+        uint256 cvxRewardClaimed = poolStaker.cvxRewardBalance;
+        require(cvxRewardClaimed > 0 || crvRewardClaimed > 0, "Nothing to Claim");
+
+        poolStaker.crvRewardBalance = 0;
+        poolStaker.cvxRewardBalance = 0;
+
         address cvxReward = getCvxRewardAddr(_poolId);
         
         ICvxReward(cvxReward).withdrawAndUnwrap(amount, false);
         // ICvxBooster(cvxBooster).withdraw(_poolId, amount);
 
-        IERC20(lpToken).transfer(user, amount);
+        //transfer reward to user
+        IERC20(crv).transfer(user, crvRewardClaimed);
+        IERC20(cvx).transfer(user, cvxRewardClaimed);
+
+        IERC20(lpToken).transfer(msg.sender, amount);
     }
 
     function claim(address user, address lpToken) external onlyVault  {
@@ -126,7 +142,16 @@ contract ConvexStrategy is Ownable{
 
     function getClaimableReward(address user, address lpToken) external view returns (uint256, uint256)  {
         uint256 _poolId = poolId[lpToken];
+
         return (poolStakerInfo[_poolId][user].crvRewardBalance, poolStakerInfo[_poolId][user].cvxRewardBalance);
+    }
+    function getClaimableRewardInUSD(address user, address lpToken) external view returns (uint256)  {
+        uint256 _poolId = poolId[lpToken];
+
+        uint256 priceCrv = IPriceOracle(oracle).getAssetPrice(crv);
+        uint256 priceCvx = IPriceOracle(oracle).getAssetPrice(cvx);
+
+        return (poolStakerInfo[_poolId][user].crvRewardBalance * priceCrv + poolStakerInfo[_poolId][user].cvxRewardBalance * priceCvx);
     }
 
     function getCvxRewardAddr(uint256 _poolId) public view returns(address) {

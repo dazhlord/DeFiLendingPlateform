@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/IBalancerGauge.sol";
 import "./interfaces/IBalancerMinter.sol";
+import "./interfaces/IPriceOracle.sol";
 import "hardhat/console.sol";
 
 contract BalancerStrategy is Ownable {
@@ -14,6 +15,8 @@ contract BalancerStrategy is Ownable {
 
     address public bal = address(0xba100000625a3754423978a60c9317c58a424e3D);
     address public constant BAL_MINTER = address(0x239e55F427D44C3cc793f49bFB507ebe76638a2b);
+
+    address public oracle;
 
     struct PoolInfo {
         mapping(address => uint) lastRewardPerToken;
@@ -30,8 +33,9 @@ contract BalancerStrategy is Ownable {
         _;
     }
 
-    constructor(address _lendingVault) {
+    constructor(address _lendingVault,address _oracle) {
         vault = _lendingVault;
+        oracle = _oracle;
     }
 
     function setGauge(address lpToken, address gauge) external onlyOwner {
@@ -87,14 +91,19 @@ contract BalancerStrategy is Ownable {
 
         _claim(user, lpToken);
 
+        uint256 rewardClaimed = pool.rewardBalance[user];
+        require(rewardClaimed > 0, "Nothing to Claim");
+        pool.rewardBalance[user] = 0;
+
+
         //update user state
         pool.depositorBalance[user] -= amount;
         pool.totalDeposit -= amount;
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
         IBalancerGauge(gauges[lpToken]).withdraw(amount);
-        IERC20(lpToken).transfer(user, amount);
-        
+        IERC20(lpToken).transfer(msg.sender, amount);
+        IERC20(bal).transfer(user, rewardClaimed);
     }
 
     function claim(address user, address lpToken) public onlyVault {
@@ -115,6 +124,13 @@ contract BalancerStrategy is Ownable {
         address lpToken
     ) external view returns (uint256) {
         return poolInfo[lpToken].rewardBalance[user];
+    }
+    
+     function getClaimableRewardInUSD(
+        address user,
+        address lpToken
+    ) external view returns (uint256) {
+        return poolInfo[lpToken].rewardBalance[user] * IPriceOracle(oracle).getAssetPrice(bal);
     }
 
     function _claim(address user, address lpToken) internal {
