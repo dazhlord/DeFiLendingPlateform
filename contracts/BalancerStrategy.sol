@@ -91,14 +91,19 @@ contract BalancerStrategy is Ownable {
 
         _claim(user, lpToken);
 
+        uint256 rewardClaimed = pool.rewardBalance[user];
+        require(rewardClaimed > 0, "Nothing to Claim");
+        pool.rewardBalance[user] = 0;
+
+
         //update user state
         pool.depositorBalance[user] -= amount;
         pool.totalDeposit -= amount;
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
         IBalancerGauge(gauges[lpToken]).withdraw(amount);
-        IERC20(lpToken).transfer(user, amount);
-        
+        IERC20(lpToken).transfer(msg.sender, amount);
+        IERC20(bal).transfer(user, rewardClaimed);
     }
 
     function claim(address user, address lpToken) public onlyVault {

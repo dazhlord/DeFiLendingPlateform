@@ -97,16 +97,28 @@ contract ConvexStrategy is Ownable{
         _claim(user, lpToken);
 
         //update user state
-        staker.depositorBalance -= amount;
+        PoolStakerInfo storage poolStaker = poolStakerInfo[_poolId][user];
+        poolStaker.depositorBalance -= amount;
         pool.totalDeposit -= amount;
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
+        uint256 crvRewardClaimed = poolStaker.crvRewardBalance;
+        uint256 cvxRewardClaimed = poolStaker.cvxRewardBalance;
+        require(cvxRewardClaimed > 0 || crvRewardClaimed > 0, "Nothing to Claim");
+
+        poolStaker.crvRewardBalance = 0;
+        poolStaker.cvxRewardBalance = 0;
+
         address cvxReward = getCvxRewardAddr(_poolId);
         
         ICvxReward(cvxReward).withdrawAndUnwrap(amount, false);
         // ICvxBooster(cvxBooster).withdraw(_poolId, amount);
 
-        IERC20(lpToken).transfer(user, amount);
+        //transfer reward to user
+        IERC20(crv).transfer(user, crvRewardClaimed);
+        IERC20(cvx).transfer(user, cvxRewardClaimed);
+
+        IERC20(lpToken).transfer(msg.sender, amount);
     }
 
     function claim(address user, address lpToken) external onlyVault  {

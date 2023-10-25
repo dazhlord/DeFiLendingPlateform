@@ -20,7 +20,7 @@ contract LendingVault is Ownable {
     uint256 public constant LP_DECIMALS = 18;
     uint256 public INTEREST_DECIMALS = 3;
 
-    uint256 public totalBorrows;
+    uint256 public totalBorrowAmount;
 
     struct LPPosition {
         uint256 LTV;
@@ -39,6 +39,7 @@ contract LendingVault is Ownable {
     mapping(address => address) public strategy; // lptoken -> strategy
 
     uint256 public treasuryFee;
+    uint256 public treasuryLastUpdateTime;
 
     event Deposit(address from, uint amount, address asset);
     event Borrow(address to, uint amount, address asset);
@@ -51,9 +52,15 @@ contract LendingVault is Ownable {
         address asset
     );
 
+    modifier validLPToken(address lpToken) {
+        require(strategy[lpToken] != address(0), "invalid lpToken");
+        _;
+    }
+
     constructor(address _sToken, address _oracle) {
         sToken = _sToken;
         oracle = _oracle;
+        treasury = msg.sender;
     }
 
     function setStrategy(address lpToken, address _strategy) public onlyOwner {
@@ -80,8 +87,9 @@ contract LendingVault is Ownable {
         interestRate = _rate;
     }
 
-    function deposit(address lpToken, uint256 amount) external {
+    function deposit(address lpToken, uint256 amount) validLPToken(lpToken) external {
         updateDebtInterest(msg.sender, lpToken);
+        updateProtocolFee();
 
         LPStaker storage staker = stakers[lpToken][msg.sender];
         staker.collateralAmount += amount;
@@ -96,29 +104,30 @@ contract LendingVault is Ownable {
     }
 
     // borrow stable coin based on collateral
-    function borrow(address lpToken, uint256 amount) external {
+    function borrow(address lpToken, uint256 amount) validLPToken(lpToken) external {
         updateDebtInterest(msg.sender, lpToken);
+        updateProtocolFee();
 
-        require(validateBorrow(lpToken, msg.sender, amount));
+        validateBorrow(lpToken, msg.sender, amount);
         LPStaker storage staker = stakers[lpToken][msg.sender];
         staker.borrowAmount += amount;
+        totalBorrowAmount += amount;
         IStableCoin(sToken).mint(msg.sender, amount);
 
         emit Borrow(msg.sender, amount, lpToken);
     }
 
     // withdraw lp token from protocol
-    function withdraw(address lpToken, uint256 amount) external {
+    function withdraw(address lpToken, uint256 amount) validLPToken(lpToken) external {
         LPStaker storage staker = stakers[lpToken][msg.sender];
         uint256 amountWithdraw = amount;
         if (amountWithdraw == type(uint256).max)
             amountWithdraw = staker.collateralAmount;
 
         updateDebtInterest(msg.sender, lpToken);
+        updateProtocolFee();
 
         validateWithdraw(lpToken, msg.sender, amountWithdraw);
-
-        // updateTreasuryFee(msg.sender, lpToken);
 
         staker.collateralAmount -= amountWithdraw;
 
@@ -128,13 +137,15 @@ contract LendingVault is Ownable {
             lpToken,
             amountWithdraw
         );
-
+        // claim reward from third-party protocol
+        IERC20(lpToken).transfer(msg.sender, amountWithdraw);
         emit Withdraw(msg.sender, amountWithdraw, lpToken);
     }
 
     //repay borrowed assets to protocol
-    function repay(address lpToken, uint256 amount) external {
+    function repay(address lpToken, uint256 amount) validLPToken(lpToken) external {
         updateDebtInterest(msg.sender, lpToken);
+        updateProtocolFee();
 
         validateRepay(lpToken, msg.sender, amount);
 
@@ -144,9 +155,9 @@ contract LendingVault is Ownable {
 
         LPStaker storage staker = stakers[lpToken][msg.sender];
 
-        treasuryFee += staker.debtInterest / 10 ** INTEREST_DECIMALS;
-        staker.borrowAmount -= repayAmount - staker.debtInterest / 10 ** INTEREST_DECIMALS;
+        staker.borrowAmount -= repayAmount - staker.debtInterest;
         staker.debtInterest = 0;
+        totalBorrowAmount -= repayAmount - staker.debtInterest;
 
         IERC20(sToken).transferFrom(msg.sender, address(this), repayAmount);
 
@@ -157,34 +168,35 @@ contract LendingVault is Ownable {
         address lpToken,
         address user,
         uint256 liquidationAmount
-    ) external {
+    ) validLPToken(lpToken) external {
         updateDebtInterest(user, lpToken);
+        updateProtocolFee();
 
-        validateLiquidation(lpToken, user, liquidationAmount);
+        uint256 validLiquidationAmount = validateLiquidation(lpToken, user, liquidationAmount);
 
-        uint256 penaltyAmount = (liquidationAmount *
+        uint256 penaltyAmount = (validLiquidationAmount *
             positions[lpToken].LPenalty) / 100;
 
         LPStaker storage stakerCaller = stakers[lpToken][msg.sender];
         LPStaker storage stakerBorrower = stakers[lpToken][user];
 
         stakerBorrower.collateralAmount -= usdToCollateral(
-            liquidationAmount + penaltyAmount,
+            validLiquidationAmount + penaltyAmount,
             lpToken
         );
         stakerCaller.collateralAmount += usdToCollateral(
-            liquidationAmount + penaltyAmount / 2,
+            validLiquidationAmount + penaltyAmount / 2,
             lpToken
         );
-        
-        treasuryFee += stakerBorrower.debtInterest / 10** INTEREST_DECIMALS;
 
-        stakerBorrower.borrowAmount -= liquidationAmount - stakerBorrower.debtInterest / INTEREST_DECIMALS;
+        stakerBorrower.borrowAmount -= validLiquidationAmount - stakerBorrower.debtInterest;
         stakerBorrower.debtInterest = 0;
         treasuryFee += penaltyAmount / 2;
+        IStrategy(strategy[lpToken]).withdraw(user, lpToken, usdToCollateral(penaltyAmount / 2, lpToken));
+        IERC20(lpToken).transfer(treasury, usdToCollateral(penaltyAmount / 2, lpToken));
 
-        IStableCoin(sToken).burn(msg.sender, liquidationAmount);
-        IStableCoin(sToken).mint(address(this), liquidationAmount);
+        IStableCoin(sToken).burn(msg.sender, validLiquidationAmount);
+        IStableCoin(sToken).mint(address(this), validLiquidationAmount);
 
         emit Liquidation(msg.sender, user, liquidationAmount, lpToken);
     }
@@ -210,21 +222,20 @@ contract LendingVault is Ownable {
     ) public view returns (uint256) {
         return
             stakers[lpToken][borrower].borrowAmount  + 
-                stakers[lpToken][borrower].debtInterest / 10 ** INTEREST_DECIMALS;
+                stakers[lpToken][borrower].debtInterest;
     }
 
     function getBorrowableAmount(address user, address lpToken) public view returns(uint256) {
         uint256 amountLimit = stakers[lpToken][user].collateralAmount;
-        amountLimit = (amountLimit * positions[lpToken].LTV) / 100;
-
-        address strategyAddr = strategy[lpToken];
-        uint256 rewardInUSD = IStrategy(strategyAddr).getClaimableRewardInUSD(user, lpToken);
-
         uint256 amountLimitInUSD = (IPriceOracle(oracle).getAssetPrice(
             lpToken
         ) * amountLimit);
 
-        return amountLimitInUSD + rewardInUSD - debt(user, lpToken);
+        address strategyAddr = strategy[lpToken];
+        uint256 rewardInUSD = IStrategy(strategyAddr).getClaimableRewardInUSD(user, lpToken);
+
+        amountLimitInUSD = (amountLimitInUSD + rewardInUSD) * positions[lpToken].LTV / 100;
+        return amountLimitInUSD - debt(user, lpToken);
     }
 
     function validateBorrow(
@@ -232,6 +243,7 @@ contract LendingVault is Ownable {
         address user,
         uint256 amount
     ) internal view returns (bool) {
+        require(amount > 0);
         require(
             stakers[lpToken][user].collateralAmount > 0,
             "ERR_BORROW_NO_COLLATERAL"
@@ -239,7 +251,7 @@ contract LendingVault is Ownable {
 
         uint256 borrowableAmount = getBorrowableAmount(user, lpToken);
         require(
-            borrowableAmount > amount,
+            borrowableAmount >= amount,
             "ERR_BORROW_OVER_LTV"
         );
 
@@ -252,7 +264,6 @@ contract LendingVault is Ownable {
         uint256 amountWithdraw
     ) internal view returns (bool) {
         uint256 userBalance = stakers[lpToken][user].collateralAmount;
-
         require(
             amountWithdraw > 0 && amountWithdraw <= userBalance,
             "ERR_WITHDRAW_INVALID_AMOUNT"
@@ -262,7 +273,7 @@ contract LendingVault is Ownable {
             uint256 debtAmount = debt(user, lpToken);
             uint256 ltvInUSD = (IPriceOracle(oracle).getAssetPrice(lpToken) *
                 (userBalance - amountWithdraw) *
-                positions[lpToken].LTV);
+                positions[lpToken].LTV) / 100;
             require(ltvInUSD > debtAmount, "ERR_WITHDRAW_GOES_OVER_LTV");
         }
 
@@ -274,8 +285,8 @@ contract LendingVault is Ownable {
         address user,
         uint256 amount
     ) internal view returns (bool) {
-        require(amount > 0 && amount <= IERC20(sToken).balanceOf(user));
-        uint256 debtFee = stakers[lpToken][user].debtInterest / 10 ** INTEREST_DECIMALS;
+        require(amount > 0);
+        uint256 debtFee = stakers[lpToken][user].debtInterest;
 
         require(debtFee > 0, "ERR_REPAY_NO_BORROWED");
         require(amount >= debtFee, "ERR_REPAY_TOO_SMALL_AMOUNT");
@@ -287,30 +298,36 @@ contract LendingVault is Ownable {
         address lpToken,
         address user,
         uint256 amount
-    ) internal view returns (bool) {
+    ) internal view returns (uint256) {
         uint256 debtAmount = debt(user, lpToken);
 
-        uint256 thresholdAmountInUSD = (IPriceOracle(oracle).getAssetPrice(
+        uint256 thresholdAmountInUSD = ((IPriceOracle(oracle).getAssetPrice(
             lpToken
         ) *
-            stakers[lpToken][user].collateralAmount *
-            positions[lpToken].LThreshold);
-
-        require(debtAmount >= thresholdAmountInUSD);
-        require(amount * 2 <= debtAmount);
-
-        return true;
+            stakers[lpToken][user].collateralAmount + IStrategy(strategy[lpToken]).getClaimableRewardInUSD(user, lpToken)) *
+            positions[lpToken].LThreshold) / 100;
+        require(stakers[lpToken][user].borrowAmount > 0, "ERR_LIQUIDATION_NO_BORROW");
+        require(debtAmount >= thresholdAmountInUSD, "ERR_LIQUIDATION_NOT_REACHED_THRESHOLD");
+        require(amount >= stakers[lpToken][user].debtInterest, "ERR_LIQUIDATION_TOO_SMALL_AMOUNT");
+        if(amount * 2 > debtAmount)
+            return debtAmount / 2;
+        return amount;
     }
 
     function updateDebtInterest(address user, address lpToken) internal {
         LPStaker storage staker = stakers[lpToken][user];
         staker.debtInterest +=
             (staker.borrowAmount * interestRate *
-                10 ** INTEREST_DECIMALS *
                 ((block.timestamp - staker.lastUpdate) /
                     1 days)) /
-            365;
+            365 / 10 ** INTEREST_DECIMALS;
         staker.lastUpdate = block.timestamp;
         console.log("debtInterest:", staker.debtInterest);
+    }
+
+    function updateProtocolFee() internal {
+        treasuryFee += totalBorrowAmount * interestRate *((block.timestamp - treasuryLastUpdateTime) / 1 days) / 365 / 10 ** INTEREST_DECIMALS;
+        treasuryLastUpdateTime = block.timestamp;
+        console.log("treasuryFee: ", treasuryFee);
     }
 }
