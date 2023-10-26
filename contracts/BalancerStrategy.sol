@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/Balancer/IBalancerGauge.sol";
 import "./interfaces/Balancer/IBalancerMinter.sol";
-import "./interfaces/Oracle/IPriceOracle.sol";
 import "hardhat/console.sol";
 
 contract BalancerStrategy is Ownable {
@@ -15,8 +14,6 @@ contract BalancerStrategy is Ownable {
 
     address public bal = address(0xba100000625a3754423978a60c9317c58a424e3D);
     address public constant BAL_MINTER = address(0x239e55F427D44C3cc793f49bFB507ebe76638a2b);
-
-    address public oracle;
 
     struct PoolInfo {
         mapping(address => uint) lastRewardPerToken;
@@ -33,9 +30,8 @@ contract BalancerStrategy is Ownable {
         _;
     }
 
-    constructor(address _lendingVault,address _oracle) {
+    constructor(address _lendingVault) {
         vault = _lendingVault;
-        oracle = _oracle;
     }
 
     function setGauge(address lpToken, address gauge) external onlyOwner {
@@ -124,13 +120,6 @@ contract BalancerStrategy is Ownable {
         address lpToken
     ) external view returns (uint256) {
         return poolInfo[lpToken].rewardBalance[user];
-    }
-    
-     function getClaimableRewardInUSD(
-        address user,
-        address lpToken
-    ) external view returns (uint256) {
-        return poolInfo[lpToken].rewardBalance[user] * IPriceOracle(oracle).getAssetPrice(bal);
     }
 
     function _claim(address user, address lpToken) internal {

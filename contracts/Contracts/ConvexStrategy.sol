@@ -4,11 +4,10 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "hardhat/console.sol";
+import "../interfaces/Convex/ICvxBooster.sol";
+import "../interfaces/Convex/ICvxReward.sol";
 
-import "./interfaces/ICvxBooster.sol";
-import "./interfaces/ICvxReward.sol";
-import "./interfaces/IPriceOracle.sol";
+import "hardhat/console.sol";
 
 contract ConvexStrategy is Ownable{
     using SafeERC20 for IERC20;
@@ -142,14 +141,6 @@ contract ConvexStrategy is Ownable{
         uint256 _poolId = poolId[lpToken];
 
         return (poolStakerInfo[_poolId][user].crvRewardBalance, poolStakerInfo[_poolId][user].cvxRewardBalance);
-    }
-    function getClaimableRewardInUSD(address user, address lpToken) external view returns (uint256)  {
-        uint256 _poolId = poolId[lpToken];
-
-        uint256 priceCrv = IPriceOracle(oracle).getAssetPrice(crv);
-        uint256 priceCvx = IPriceOracle(oracle).getAssetPrice(cvx);
-
-        return (poolStakerInfo[_poolId][user].crvRewardBalance * priceCrv + poolStakerInfo[_poolId][user].cvxRewardBalance * priceCvx);
     }
 
     function getCvxRewardAddr(uint256 _poolId) public view returns(address) {

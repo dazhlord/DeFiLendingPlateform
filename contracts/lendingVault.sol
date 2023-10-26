@@ -225,9 +225,7 @@ contract LendingVault is Ownable {
         ) * amountLimit);
 
         address strategyAddr = strategy[lpToken];
-        uint256 rewardInUSD = IStrategy(strategyAddr).getClaimableRewardInUSD(user, lpToken);
-
-        amountLimitInUSD = (amountLimitInUSD + rewardInUSD) * positions[lpToken].LTV / 100;
+        amountLimitInUSD = amountLimitInUSD * positions[lpToken].LTV / 100;
         return amountLimitInUSD - debt(user, lpToken);
     }
 
@@ -287,10 +285,10 @@ contract LendingVault is Ownable {
     ) internal view{
         uint256 debtAmount = debt(user, lpToken);
 
-        uint256 thresholdAmountInUSD = ((IPriceOracle(oracle).getAssetPrice(
+        uint256 thresholdAmountInUSD = (IPriceOracle(oracle).getAssetPrice(
             lpToken
         ) *
-            stakers[lpToken][user].collateralAmount + IStrategy(strategy[lpToken]).getClaimableRewardInUSD(user, lpToken)) *
+            stakers[lpToken][user].collateralAmount *
             positions[lpToken].LThreshold) / 100;
         require(stakers[lpToken][user].borrowAmount > 0, "ERR_LIQUIDATION_NO_BORROW");
         require(debtAmount >= thresholdAmountInUSD, "ERR_LIQUIDATION_NOT_REACHED_THRESHOLD");

@@ -28,7 +28,6 @@ describe("Balancer Strategy", async () => {
     let LPToken: Contract;
     let Gauge: Contract;
     let BALToken : Contract;
-    let PriceOracle: Contract;
     beforeEach(async () => {
         [owner, vault, user1, user2] = await ethers.getSigners();
 
@@ -49,19 +48,10 @@ describe("Balancer Strategy", async () => {
         const BalancerVault = await ethers.getContractAt(VaultABI, balanerVaultAddr);
 
         LPToken = await ethers.getContractAt("IERC20", lpToken1.address);
-    
-        // deploy mock price oracle contract
-        const priceOracle = await ethers.getContractFactory("MockOracle");
-        PriceOracle = await priceOracle.deploy();
-        await PriceOracle.deployed();
-        // set price of token
-        await PriceOracle.setPrice(lpToken1.address, 2);
-        await PriceOracle.setPrice(BALAddr.address, 100);
 
         const _balStrategy = await ethers.getContractFactory("BalancerStrategy");
         BalStrategy = await _balStrategy.connect(owner).deploy(
-        vault.address, PriceOracle.address
-        );
+        vault.address);
         await BalStrategy.deployed();
     });
     
@@ -126,8 +116,6 @@ describe("Balancer Strategy", async () => {
                 const gaugeBalanceAfter = await LPToken.balanceOf(gauge1.address);
 
                 const rewardBalanceAfter = await BALToken.balanceOf(user1.address);
-                const rewardBalanceInUSD = await BalStrategy.getClaimableRewardInUSD(user1.address, lpToken1.address);
-
                 const user1Balance =await LPToken.balanceOf(user1.address);
 
                 expect(Number(rewardBalanceAfter.sub(rewardBalanceBefore))).to.be.greaterThan(0);

@@ -3,7 +3,7 @@
 pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "./interfaces/IStableCoin.sol";
+import "../interfaces/IStableCoin.sol";
 
 contract StableCoin is IStableCoin, ERC20{
     address public owner;

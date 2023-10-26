@@ -11,7 +11,7 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
-pragma solidity >=0.8.17;
+pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -35,5 +35,5 @@ interface IVault {
      */
     function getPoolTokens(
         bytes32 poolId
-    ) external view returns (IERC20[] memory tokens, uint256[] memory balances, uint256 lastChangeBlock);
+    ) external view returns (address[] memory tokens, uint256[] memory balances, uint256 lastChangeBlock);
 }
