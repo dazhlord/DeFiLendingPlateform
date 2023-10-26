@@ -4,9 +4,8 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "./interfaces/IBalancerGauge.sol";
-import "./interfaces/IBalancerMinter.sol";
-import "./interfaces/IPriceOracle.sol";
+import "../interfaces/Balancer/IBalancerGauge.sol";
+import "../interfaces/Balancer/IBalancerMinter.sol";
 import "hardhat/console.sol";
 
 contract BalancerStrategy is Ownable {
@@ -124,13 +123,6 @@ contract BalancerStrategy is Ownable {
         address lpToken
     ) external view returns (uint256) {
         return poolInfo[lpToken].rewardBalance[user];
-    }
-    
-     function getClaimableRewardInUSD(
-        address user,
-        address lpToken
-    ) external view returns (uint256) {
-        return poolInfo[lpToken].rewardBalance[user] * IPriceOracle(oracle).getAssetPrice(bal);
     }
 
     function _claim(address user, address lpToken) internal {
