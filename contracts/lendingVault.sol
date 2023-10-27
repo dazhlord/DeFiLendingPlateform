@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/IStableCoin.sol";
 import "./interfaces/IStrategy.sol";
-import "./interfaces/Oracle/IPriceOracle.sol";
+import "./interfaces/Oracle/IOracleManager.sol";
 
 import "hardhat/console.sol";
 
@@ -134,8 +134,7 @@ contract LendingVault is Ownable {
             lpToken,
             amount
         );
-        // claim reward from third-party protocol
-        // IERC20(lpToken).transfer(msg.sender, amount);
+        IERC20(lpToken).transfer(msg.sender, amount);
         emit Withdraw(msg.sender, amount, lpToken);
     }
 
@@ -206,7 +205,7 @@ contract LendingVault is Ownable {
     ) public view returns (uint256) {
         return
             usdAmount /
-            IPriceOracle(oracle).getAssetPrice(lpToken);
+            IOracleManager(oracle).getAssetPrice(lpToken);
     }
 
     function debt(
@@ -220,11 +219,10 @@ contract LendingVault is Ownable {
 
     function getBorrowableAmount(address user, address lpToken) public view returns(uint256) {
         uint256 amountLimit = stakers[lpToken][user].collateralAmount;
-        uint256 amountLimitInUSD = (IPriceOracle(oracle).getAssetPrice(
+        uint256 amountLimitInUSD = (IOracleManager(oracle).getAssetPrice(
             lpToken
         ) * amountLimit);
 
-        address strategyAddr = strategy[lpToken];
         amountLimitInUSD = amountLimitInUSD * positions[lpToken].LTV / 100;
         return amountLimitInUSD - debt(user, lpToken);
     }
@@ -259,10 +257,12 @@ contract LendingVault is Ownable {
         );
 
         uint256 debtAmount = debt(user, lpToken);
-        uint256 ltvInUSD = (IPriceOracle(oracle).getAssetPrice(lpToken) *
-            (userBalance - amountWithdraw) *
-            positions[lpToken].LTV) / 100;
-        require(ltvInUSD > debtAmount, "ERR_WITHDRAW_GOES_OVER_LTV");
+        if(debtAmount > 0) {
+            uint256 ltvInUSD = (IOracleManager(oracle).getAssetPrice(lpToken) *
+                (userBalance - amountWithdraw) *
+                positions[lpToken].LTV) / 100;
+            require(ltvInUSD > debtAmount, "ERR_WITHDRAW_GOES_OVER_LTV");
+        }
     }
 
     function validateRepay(
@@ -285,7 +285,7 @@ contract LendingVault is Ownable {
     ) internal view{
         uint256 debtAmount = debt(user, lpToken);
 
-        uint256 thresholdAmountInUSD = (IPriceOracle(oracle).getAssetPrice(
+        uint256 thresholdAmountInUSD = (IOracleManager(oracle).getAssetPrice(
             lpToken
         ) *
             stakers[lpToken][user].collateralAmount *

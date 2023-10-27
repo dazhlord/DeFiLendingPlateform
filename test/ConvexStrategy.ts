@@ -45,7 +45,6 @@ describe("Convex Strategy", async () => {
         //get pool tokens to deposit to vault
         LPToken = await ethers.getContractAt("ERC20", lpToken1.address);
         const userBalance = await LPToken.balanceOf(vault.address);
-        console.log("userBalance:", userBalance);
         const _cvxStrategy = await ethers.getContractFactory("ConvexStrategy");
         CvxStrategy = await _cvxStrategy.connect(owner).deploy(
         vault.address);
@@ -96,22 +95,16 @@ describe("Convex Strategy", async () => {
             })
             it("deposit successfully", async() => {
                 const poolInfo = await Booster.poolInfo(38);
-                console.log("Gauge:", poolInfo.gauge);
                 const boosterBalanceBefore = await LPToken.balanceOf(poolInfo.gauge);
 
                 const baseRewardPool = await CvxStrategy.getCvxRewardAddr(poolId1);
-                console.log("baseRewardPool address: ",baseRewardPool);
 
                 await CvxStrategy.connect(vault).deposit(user1.address, LPToken.address, ethers.utils.parseEther("1"));
                 await CvxStrategy.connect(vault).deposit(user2.address, LPToken.address, ethers.utils.parseEther("1"));
                 
                 const boosterBalanceAfter = await LPToken.balanceOf(poolInfo.gauge);
 
-                console.log("gaugeBalanceBefore", boosterBalanceBefore);
-                console.log("gaugeBalanceAfter", boosterBalanceAfter);
-
                 const user1ClaimableReward = await CvxStrategy.getClaimableReward(user1.address, lpToken1.address);
-                console.log("user1 claimable reward", user1ClaimableReward[0], user1ClaimableReward[1]);
 
                 
                 const pool = await CvxStrategy.poolInfo(38);
@@ -123,11 +116,10 @@ describe("Convex Strategy", async () => {
         describe("2. claim rewards", async() => {
             beforeEach(async() => {
                 const pool = await CvxStrategy.poolInfo(38);
-                console.log("beforeClaim: ", pool.totalDeposit);
-                console.log("user1 & user2 depoist first");
+                // user1 & user2 depoist first;
             })
             it("claim rewards successfully", async() => {
-                console.log("user1 claim1");
+                // user1 claim1";
                 await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1")); 
                 await CvxStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseEther("1"));
 
@@ -140,6 +132,7 @@ describe("Convex Strategy", async () => {
                 const user1CrvRewardAfter = await CrvToken.balanceOf(user1.address);
                 const user1CvxRewardAfter = await CvxToken.balanceOf(user1.address);
 
+                // user2 claims
                 const user2CrvRewardBefore = await CrvToken.balanceOf(user2.address);
                 const user2CvxRewardBefore = await CvxToken.balanceOf(user2.address);
                 await CvxStrategy.connect(vault).claim(user2.address, lpToken1.address);
@@ -152,9 +145,6 @@ describe("Convex Strategy", async () => {
                 const user2CrvReward = user2CrvRewardAfter - user2CrvRewardBefore;
                 const user2CvxReward = user2CvxRewardAfter - user2CvxRewardBefore;
 
-                console.log("user1Reward: ", user1CrvReward, user1CvxReward);
-                console.log("user2Reward: ", user2CrvReward, user2CvxReward);
-
                 //compare if reward of user1 is around user2.
                 expect(user1CrvReward- user2CrvReward).to.be.lessThanOrEqual(Number(ethers.utils.parseUnits("1", 14)));
                 expect(user1CvxReward- user2CvxReward).to.be.lessThanOrEqual(Number(ethers.utils.parseUnits("1", 14)));
@@ -163,19 +153,19 @@ describe("Convex Strategy", async () => {
                 await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1")); 
                 await CvxStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseEther("1"));
                 await increaseBlockTimestamp(provider, 86400);
-                console.log("user1 and user 2 claim 1 day later");
+                // user1 and user 2 claim 1 day later;
                 await CvxStrategy.connect(vault).claim(user1.address, lpToken1.address);
                 await CvxStrategy.connect(vault).claim(user2.address, lpToken1.address);
 
-                console.log("user1 deposit2 again.");
+                // user1 deposit2 again;
                 await CvxStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("1"));
                 await increaseBlockTimestamp(provider, 86400);
 
-                console.log("user2 deposit2 1 day later");
+                // user2 deposit2 1 day later;
                 await CvxStrategy.connect(vault).deposit(user2.address, lpToken1.address, ethers.utils.parseEther("1"));
                 await increaseBlockTimestamp(provider, 86400);
 
-                console.log("user1 and user 2 claims 1 day later");
+                // user1 and user 2 claims 1 day later;
 
                 const user1CrvRewardBefore = await CrvToken.balanceOf(user1.address);
                 const user1CvxRewardBefore = await CvxToken.balanceOf(user1.address);
@@ -195,6 +185,7 @@ describe("Convex Strategy", async () => {
                 const user2CrvReward = user2CrvRewardAfter - user2CrvRewardBefore;
                 const user2CvxReward = user2CvxRewardAfter - user2CvxRewardBefore;
 
+                //check the reward of user2 is around half of usr1
                 expect(user1CrvReward - user2CrvReward * 2).to.be.lessThanOrEqual(Number(ethers.utils.parseUnits("1", 14)));
                 expect(user1CvxReward - user2CvxReward * 2).to.be.lessThanOrEqual(Number(ethers.utils.parseUnits("1", 14)));
             })
@@ -219,17 +210,16 @@ describe("Convex Strategy", async () => {
             })
             it("withdraw successfully", async() => {
                 const poolInfo = await Booster.poolInfo(38);
-                console.log("Gauge:", poolInfo.gauge);
                 const gaugeBalanceBefore = Number(await LPToken.balanceOf(poolInfo.gauge));
+                const vaultBalanceBefore =await LPToken.balanceOf(vault.address);
 
                 await CvxStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("1"));
                 const gaugeBalanceAfter = Number(await LPToken.balanceOf(Booster.address));
-                const user1Balance =await LPToken.balanceOf(user1.address);
+                const vaultBalanceAfter =await LPToken.balanceOf(vault.address);
 
                 const user1ClaimableReward = await CvxStrategy.getClaimableReward(user1.address, lpToken1.address);
-                console.log("user1 claimable reward:", user1ClaimableReward[0], user1ClaimableReward[1]);
 
-                expect(user1Balance).to.be.eq(ethers.utils.parseEther("1"));
+                expect(vaultBalanceAfter.sub(vaultBalanceBefore)).to.be.eq(ethers.utils.parseEther("1"));
                 expect(gaugeBalanceBefore - gaugeBalanceAfter- Number(ethers.utils.parseEther("1"))).to.be.greaterThanOrEqual(0);
             })
         })

@@ -107,12 +107,10 @@ contract ConvexStrategy is Ownable{
         poolStaker.cvxRewardBalance = 0;
 
         address cvxReward = getCvxRewardAddr(_poolId);
-        
         ICvxReward(cvxReward).withdrawAndUnwrap(amount, false);
         // ICvxBooster(cvxBooster).withdraw(_poolId, amount);
-
-        //transfer reward to user
-        IERC20(lpToken).transfer(user, amount);
+        
+        IERC20(lpToken).transfer(msg.sender, amount);
     }
 
     function claim(address user, address lpToken) external onlyVault  {
