@@ -92,10 +92,6 @@ describe("Balancer Strategy", async () => {
 
                 await BalStrategy.connect(vault).deposit(user1.address, lpToken1.address, ethers.utils.parseEther("400"));
                 const gaugeBalanceAfter = await LPToken.balanceOf(gauge1.address);
-
-                console.log("gaugeBalanceBefore", gaugeBalanceBefore);
-                console.log("gaugeBalanceAfter", gaugeBalanceAfter);
-
                 
                 const pool = await BalStrategy.poolInfo(lpToken1.address);
                 expect(pool.totalDeposit).to.be.eq(ethers.utils.parseEther("400"));
@@ -110,16 +106,17 @@ describe("Balancer Strategy", async () => {
             })
             it("withdraw successfully", async() => {
                 const gaugeBalanceBefore = await LPToken.balanceOf(gauge1.address);
+                const vaultBalanceBefore =await LPToken.balanceOf(vault.address);
                 const rewardBalanceBefore = await BALToken.balanceOf(user1.address);
 
                 await BalStrategy.connect(vault).withdraw(user1.address, lpToken1.address, ethers.utils.parseEther("400"));
                 const gaugeBalanceAfter = await LPToken.balanceOf(gauge1.address);
 
                 const rewardBalanceAfter = await BALToken.balanceOf(user1.address);
-                const user1Balance =await LPToken.balanceOf(user1.address);
+                const vaultBalanceAfter =await LPToken.balanceOf(vault.address);
 
                 expect(Number(rewardBalanceAfter.sub(rewardBalanceBefore))).to.be.greaterThan(0);
-                expect(user1Balance).to.be.eq(ethers.utils.parseEther("400"));
+                expect(vaultBalanceAfter.sub(vaultBalanceBefore)).to.be.eq(ethers.utils.parseEther("400"));
                 expect(gaugeBalanceBefore.sub(gaugeBalanceAfter)).to.be.eq(ethers.utils.parseEther("400"));
             })
         })
@@ -144,8 +141,6 @@ describe("Balancer Strategy", async () => {
 
                 const user1Reward =  user1RewardAfter - user1RewardBefore;
                 const user2Reward = user2RewardAfter - user2RewardBefore;
-                console.log("user1Reward", user1RewardAfter - user1RewardBefore);
-                console.log("user2Reward", user2RewardAfter - user2RewardBefore);
                 //rewards of user1 and user2 will be almost same.
                 const rewardDelta = user1Reward / 10000;
                 expect(user1Reward- user2Reward).to.be.lessThanOrEqual(rewardDelta);
@@ -178,8 +173,6 @@ describe("Balancer Strategy", async () => {
 
                 const user1Reward =  user1RewardAfter - user1RewardBefore;
                 const user2Reward = user2RewardAfter - user2RewardBefore;
-                console.log("user1Reward: ", user1Reward);
-                console.log("user2Reward: ", user2Reward);
 
                 //rewards of user1 will be the same as twice of user2 rewards.
                 const rewardDelta = user1Reward / 10000;

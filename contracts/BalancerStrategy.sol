@@ -98,7 +98,7 @@ contract BalancerStrategy is Ownable {
 
         // this allows to withdraw extra Reward from convex and also withdraw deposited lp tokens.
         IBalancerGauge(gauges[lpToken]).withdraw(amount);
-        IERC20(lpToken).transfer(user, amount);
+        IERC20(lpToken).transfer(msg.sender, amount);
         IERC20(bal).transfer(user, rewardClaimed);
     }
 

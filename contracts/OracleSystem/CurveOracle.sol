@@ -1,51 +1,61 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9; 
 
-import {ICurvePool, ICurvePool2} from "../interfaces/Convex/ICurvePool.sol"; 
-import {vMath} from "../libraries/vMath.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-//import "hardhat/console.sol";
+
+import {ICurvePool, ICurvePool2} from "../interfaces/Convex/ICurvePool.sol"; 
+import "../interfaces/Oracle/IOracleManager.sol";
+import {vMath} from "../libraries/vMath.sol";
+
+import "hardhat/console.sol";
 
 //used for all curveV1 amd V2 tokens, no need to redeploy
-library CurveOracle {
-	// function check_reentrancy(address curve_pool, ICurvePool.CurveReentrancyType reentrancyType) internal {
-	// 	//makerdao uses remove_liquidity to trigger reentrancy lock
-	// 	if(reentrancyType == ICurvePool.CurveReentrancyType.NO_CHECK){
-	// 		return;
-	// 	}
-	// 	else if(reentrancyType == ICurvePool.CurveReentrancyType.REMOVE_LIQUIDITY_ONE_COIN){
-	// 		ICurvePool(curve_pool).remove_liquidity_one_coin(0,1,0);
-	// 	}
-	// 	else if(reentrancyType == ICurvePool.CurveReentrancyType.REMOVE_LIQUIDITY_ONE_COIN_RETURNS){
-	// 		ICurvePool2(curve_pool).remove_liquidity_one_coin(0,1,0);
-	// 	}
-	// 	else if(reentrancyType == ICurvePool.CurveReentrancyType.REMOVE_LIQUIDITY_2){
-	// 		uint[2] memory amounts = [uint(0), uint(0)];
-	// 		ICurvePool2(curve_pool).remove_liquidity(0, amounts);
-	// 	}
-	// 	else if(reentrancyType == ICurvePool.CurveReentrancyType.REMOVE_LIQUIDITY_2_RETURNS){
-	// 		uint[2] memory amounts = [uint(0), uint(0)];
-	// 		ICurvePool(curve_pool).remove_liquidity(0, amounts);
-	// 	}
-	// 	else if(reentrancyType == ICurvePool.CurveReentrancyType.REMOVE_LIQUIDITY_3){
-	// 		uint[3] memory amounts = [uint(0), uint(0), uint(0)];
-	// 		ICurvePool2(curve_pool).remove_liquidity(0, amounts);
-	// 	}
-	// 	else if(reentrancyType == ICurvePool.CurveReentrancyType.REMOVE_LIQUIDITY_3_RETURNS){
-	// 		uint[3] memory amounts = [uint(0), uint(0), uint(0)];
-	// 		ICurvePool(curve_pool).remove_liquidity(0, amounts);
-	// 	}
-	// 	else {
-	// 		revert();
-	// 	}
-	// }
+contract CurveOracle {
+
+	address public oracleManager;
+
+	constructor(address _oracle) {
+		oracleManager = _oracle;
+	}
+
+	function getAssetPrice(address lpToken, address pool) external view returns(uint256 price) {
+		require(msg.sender == oracleManager);
+
+        uint256 poolSize = 0;
+		for(uint i =0; i < 4; i ++){
+			try ICurvePool(pool).coins(i) returns (address) {
+			poolSize++;
+			} catch {
+				//ignore error
+				console.log("error:", i);
+			}
+		}
+
+		console.log("poolSize:", poolSize);
+
+        uint256[] memory prices = new uint256[](poolSize);
+		console.log("pool:", pool);
+
+        for (uint256 i =0; i < poolSize; i++) {
+            address underlying = ICurvePool(pool).coins(i);
+
+            prices[i] = IOracleManager(oracleManager).getAssetPrice(underlying); //handles case where underlying is curve too.
+			// underlyingBalance = ICurvePool(pool).balances(i);
+            require(prices[i] != 0, "ERR_ORACLE_UNDERLYING_FAIL");
+			// price = price + prices[i] * underlyingBalance;
+        }
+        price = get_price_v2(pool, prices);
+		// uint256 totalSupply = ICurvePool(pool).totalSupply();
+		// price = price / totalSupply;
+		console.log("CurvePrice:", price);
+	}
 
 	/**	
      * @dev Calculates the value of a curve v2 lp token (not pegged)
      * @param curve_pool The curve pool address (not the token address!)
      * @param prices The price of the underlying assets in the curve pool
      **/
-	function get_price_v2(address curve_pool, uint256[] memory prices) internal returns(uint256) {
+	function get_price_v2(address curve_pool, uint256[] memory prices) internal view returns(uint256) {
 		//check_reentrancy(curve_pool, reentrancyType);
         uint256 virtual_price = ICurvePool(curve_pool).get_virtual_price();
 
@@ -71,5 +81,8 @@ library CurveOracle {
 		uint256 geo_mean = vMath.nthroot(n, product);
 		return (n * virtual_price * geo_mean) / 1e18; 
 	}
-
+	
+    //Just used for calling curve remove liquidity. Without this, remove_liquidity cannot find function selector receive()
+	receive() external payable {
+	}
 }

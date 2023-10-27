@@ -97,8 +97,7 @@ describe("Lending Vault", async () => {
     //Deploy CvxStrategy contract
     const cvxStrategy = await ethers.getContractFactory("ConvexStrategy");
     CvxStrategy = await cvxStrategy.deploy(
-      VaultContract.address,
-      PriceOracle.address
+      VaultContract.address
     );
     await CvxStrategy.deployed();
 
@@ -108,8 +107,7 @@ describe("Lending Vault", async () => {
 
     const balStrategy = await ethers.getContractFactory("BalancerStrategy");
     BalStrategy = await balStrategy.deploy(
-      VaultContract.address,
-      PriceOracle.address
+      VaultContract.address
     );
     await BalStrategy.deployed();
 
@@ -387,9 +385,6 @@ describe("Lending Vault", async () => {
           cvxLpToken.address
         );
 
-        console.log("User1 Bal Debt: ", debtUser1);
-        console.log("User1 Cvx Debt: ", debtUser2);
-
         //user2 repay all borrowed asset
         await StableCoin.mintByOwner(
           user2.address,
@@ -528,6 +523,10 @@ describe("Lending Vault", async () => {
 
     describe("Liquidation call", async () => {
       beforeEach(async () => {
+        const user1Balance = await balLpToken.balanceOf(user1.address);
+        const user2Balance = await balLpToken.balanceOf(user2.address);
+        const ownerBalance = await balLpToken.balanceOf(balTokenOwner.address);
+
         await VaultContract.setInterestRate(5000);
         //user1 and user2 deposit BalLP tokens
         await balLpToken
@@ -535,19 +534,19 @@ describe("Lending Vault", async () => {
           .approve(VaultContract.address, ethers.utils.parseEther("40"));
         await VaultContract.connect(user1).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("40")
+          ethers.utils.parseEther("20")
         );
         await balLpToken
           .connect(user2)
           .approve(VaultContract.address, ethers.utils.parseEther("40"));
         await VaultContract.connect(user2).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("40")
+          ethers.utils.parseEther("20")
         );
         await increaseBlockTimestamp(provider, 86400 * 2);
         await VaultContract.connect(user1).borrow(
           balLpToken.address,
-          ethers.utils.parseEther("60")
+          ethers.utils.parseEther("30")
         );
       });
 
@@ -558,7 +557,7 @@ describe("Lending Vault", async () => {
           ethers.utils.parseEther("100")
         );
 
-        const penaltyAmount = ethers.utils.parseEther("60").div(100);
+        const penaltyAmount = ethers.utils.parseEther("30").div(100);
         const user1InfoBefore = await VaultContract.stakers(
           balLpToken.address,
           user1.address
@@ -567,7 +566,7 @@ describe("Lending Vault", async () => {
         await VaultContract.connect(user3).liquidation(
           balLpToken.address,
           user1.address,
-          ethers.utils.parseEther("30")
+          ethers.utils.parseEther("15")
         );
 
         const user1InfoAfter = await VaultContract.stakers(
@@ -581,34 +580,29 @@ describe("Lending Vault", async () => {
 
         const treasuryBalance = await balLpToken.balanceOf(owner.address);
         expect(user3Info.collateralAmount).to.be.eq(
-          ethers.utils.parseEther("30").add(penaltyAmount.div(2)).div(2)
+          ethers.utils.parseEther("15").add(penaltyAmount.div(2)).div(2)
         );
         expect(
           user1InfoBefore.collateralAmount.sub(user1InfoAfter.collateralAmount)
-        ).to.be.eq(ethers.utils.parseEther("30").add(penaltyAmount).div(2));
-        // expect(user1InfoBefore.borrowAmount.sub(user1InfoAfter.borrowAmount)).to.be.eq(ethers.utils.parseEther("30").sub(user1InfoAfter.debtInterest));
+        ).to.be.eq(ethers.utils.parseEther("15").add(penaltyAmount).div(2));
         expect(treasuryBalance).to.be.eq(penaltyAmount.div(2).div(2));
       });
       it("Accrue functionality", async() => {
-        console.log("accrue1");
         await increaseBlockTimestamp(provider, 86400 * 15);
         await StableCoin.mintByOwner(
           user3.address,
           ethers.utils.parseEther("100")
         );
-        console.log("accrue2");
         await VaultContract.connect(user3).liquidation(
           balLpToken.address,
           user1.address,
-          ethers.utils.parseEther("30")
+          ethers.utils.parseEther("15")
         );
-        console.log("accrue3");
 
         await increaseBlockTimestamp(provider, 86400 * 15);
 
         await VaultContract.accrue();
         const treasuryBalance = await StableCoin.balanceOf(owner.address);
-        console.log("treasuryBalance:", treasuryBalance);
       })
     });
   });
