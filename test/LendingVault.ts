@@ -154,6 +154,9 @@ describe("Lending Vault", async () => {
     await OracleManager.setAssetSources([usdt.address], ["0x3e7d1eab13ad0104d2750b8863b489d65364e32d"]);  //USDT/USD
     await OracleManager.setAssetSources([usdc.address], ["0x8fffffd4afb6115b954bd326cbe7b4ba576818f6"]); // USDC/USD
     await OracleManager.setAssetSources([wbtc.address], ["0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"]);  // BTC/USD
+
+    await VaultContract.setPriceOracle(OracleManager.address);
+
   });
 
   describe("Admin Role", async () => {
