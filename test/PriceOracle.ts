@@ -20,10 +20,13 @@ describe("PriceOracle", async() => {
     let bal : SignerWithAddress;
     let dai : SignerWithAddress;
     let weth : SignerWithAddress;
+    let wbtc: SignerWithAddress;
     let usdc : SignerWithAddress;
     let usdt : SignerWithAddress;
     let balLPToken1: SignerWithAddress;
+    let balLPToken2: SignerWithAddress;
     let crvLPToken1: SignerWithAddress;
+    let crvLPToken2: SignerWithAddress;
 
     let OracleManager : Contract;
     let BalancerOracle : Contract;
@@ -40,9 +43,11 @@ describe("PriceOracle", async() => {
         weth = await ethers.getSigner("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
         usdc = await ethers.getSigner("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
         usdt = await ethers.getSigner("0xdAC17F958D2ee523a2206206994597C13D831ec7");
+        wbtc = await ethers.getSigner("0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599");
         balLPToken1 = await ethers.getSigner("0x571046eae58c783f29f95adba17dd561af8a8712"); //B2-50WETH-50DAI
+        balLPToken2 = await ethers.getSigner("0x0b09dea16768f0799065c475be02919503cb2a35"); // B-60WETH-40DAI
         crvLPToken1 = await ethers.getSigner("0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490"); //3Crv token
-
+        crvLPToken2 = await ethers.getSigner("0xc4ad29ba4b3c580e6d59105fff484999997675ff");
         const assetProvider = await ethers.getContractFactory("AssetProvider");
         AssetProvider= await assetProvider.deploy();
         await AssetProvider.deployed();
@@ -66,7 +71,10 @@ describe("PriceOracle", async() => {
         await AssetProvider.setAssetInfo(dai.address, 1);
         await AssetProvider.setAssetInfo(usdc.address, 1);
         await AssetProvider.setAssetInfo(usdt.address, 1);
+        await AssetProvider.setAssetInfo(wbtc.address, 1);
         await AssetProvider.setAssetInfo(balLPToken1.address, 2);
+        await AssetProvider.setAssetInfo(balLPToken2.address, 2);
+        await AssetProvider.setCrvInfo(crvLPToken2.address, 3, "0xd51a44d3fae010294c616388b506acda1bfaae46");
         await AssetProvider.setCrvInfo(crvLPToken1.address, 3, "0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7"); // DAI/USDC/USDT Curve Pool
 
         await OracleManager.setBalancerOracle(BalancerOracle.address);
@@ -104,6 +112,7 @@ describe("PriceOracle", async() => {
             await OracleManager.connect(lendingVault).setAssetSources([dai.address], ["0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9"]);  // DAI/USD
             await OracleManager.setAssetSources([usdt.address], ["0x3e7d1eab13ad0104d2750b8863b489d65364e32d"]);  //USDT/USD
             await OracleManager.setAssetSources([usdc.address], ["0x8fffffd4afb6115b954bd326cbe7b4ba576818f6"]); // USDC/USD
+            await OracleManager.setAssetSources([wbtc.address], ["0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"])
         })
         it("get Chainlink Asset Price successfully", async() => {
             await OracleManager.getAssetPrice(cvx.address);
@@ -113,11 +122,16 @@ describe("PriceOracle", async() => {
         it("get Balancer LP Price successfully", async() => {
             await OracleManager.getAssetPrice(balLPToken1.address);
             // const priceBPT = await OracleManager.prices(balLPToken1.address);
+            const balLP2Price = await OracleManager.getAssetPrice(balLPToken2.address);
+            console.log("B-60WETH-40DAI: ",balLP2Price);
         })
-        it("get Curve LP Price successfully", async() => {
+        it("get Curve LP1 Price successfully", async() => {
             await OracleManager.getAssetPrice(crvLPToken1.address);
             // const price = await OracleManager.price(crvLPToken1.address);
             // expect(price).to.be.eq("308337109");
+        })
+        it("get Curve LP2 Price successfully", async() => {
+            await OracleManager.getAssetPrice(crvLPToken2.address);
         })
         it("get zero price if not vaild asset or    asset is not pre-defined", async() => {
             await OracleManager.getAssetPrice(user1.address);

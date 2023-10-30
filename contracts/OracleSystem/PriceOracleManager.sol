@@ -60,7 +60,7 @@ contract PriceOracleManager {
         }
     }
 
-    function getAssetPrice(address asset) public returns(uint256 price) {
+    function getAssetPrice(address asset) public view returns(uint256 price) {
         (uint assetType, ) = assetProvider.getAssetType(asset);
 
         if(assetType == 1)
@@ -101,7 +101,7 @@ contract PriceOracleManager {
     }
 
     function getCurveLPPrice(
-        address asset) internal returns (uint256 price) {
+        address asset) internal view returns (uint256 price) {
         (, address pool) = assetProvider.getAssetType(asset);
 
         price = CurveOracle(curveOracle).getAssetPrice(asset, pool);

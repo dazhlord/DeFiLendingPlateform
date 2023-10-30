@@ -23,7 +23,6 @@ describe("Lending Vault", async () => {
   let cvxLpToken: Contract;
   let balLpToken: Contract;
   let balGauge: SignerWithAddress;
-  let cvxPoolId: any;
 
   let VaultContract: Contract;
   let PriceOracle: Contract;
@@ -37,6 +36,16 @@ describe("Lending Vault", async () => {
   let balToken: Contract;
   let cvxToken: Contract;
   let crvToken: Contract;
+
+  let wbtc: SignerWithAddress;
+  let usdc: SignerWithAddress;
+  let usdt: SignerWithAddress;
+  let weth: SignerWithAddress;
+
+  let OracleManager : Contract;
+  let BalancerOracle : Contract;
+  let CurveOracle : Contract;
+  let AssetProvider: Contract;
 
   beforeEach(async () => {
     [owner, user1, user2, user3] = await ethers.getSigners();
@@ -58,7 +67,6 @@ describe("Lending Vault", async () => {
     cvxTokenOwner = await ethers.getImpersonatedSigner(
       "0x347140c7F001452e6A60131D24b37103D0e34231"
     );
-
     balToken = await ethers.getContractAt(
       "IERC20",
       "0xba100000625a3754423978a60c9317c58a424e3D"
@@ -72,24 +80,17 @@ describe("Lending Vault", async () => {
       "0xD533a949740bb3306d119CC777fa900bA034cd52"
     );
 
-    // deploy mock price oracle contract
-    const priceOracle = await ethers.getContractFactory("MockOracle");
-    PriceOracle = await priceOracle.deploy();
-    await PriceOracle.deployed();
-
-    // set price of token
-    await PriceOracle.setPrice(balLpToken.address, 2);
-    await PriceOracle.setPrice(cvxLpToken.address, 4);
-    await PriceOracle.setPrice(balToken.address, 100);
-    await PriceOracle.setPrice(cvxToken.address, 100);
-    await PriceOracle.setPrice(crvToken.address, 100);
+    weth = await ethers.getSigner("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+    usdc = await ethers.getSigner("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+    usdt = await ethers.getSigner("0xdAC17F958D2ee523a2206206994597C13D831ec7");
+    wbtc = await ethers.getSigner("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599");
 
     const stableCoin = await ethers.getContractFactory("StableCoin");
     StableCoin = await stableCoin.deploy();
     await StableCoin.deployed();
 
     const vault = await ethers.getContractFactory("LendingVault");
-    VaultContract = await vault.deploy(StableCoin.address, PriceOracle.address);
+    VaultContract = await vault.deploy(StableCoin.address);
     await VaultContract.deployed();
 
     await StableCoin.setVault(VaultContract.address);
@@ -116,6 +117,43 @@ describe("Lending Vault", async () => {
       BoosterABI,
       "0xF403C135812408BFbE8713b5A23a04b3D48AAE31"
     );
+
+    const assetProvider = await ethers.getContractFactory("AssetProvider");
+    AssetProvider= await assetProvider.deploy();
+    await AssetProvider.deployed();
+
+    const oracle = await ethers.getContractFactory("PriceOracleManager");
+    OracleManager = await oracle.deploy(VaultContract.address, AssetProvider.address);
+    await OracleManager.deployed();
+
+    const balOracle = await ethers.getContractFactory("BalancerOracle");
+    BalancerOracle= await balOracle.deploy(OracleManager.address);
+    await BalancerOracle.deployed();
+
+    const crvOracle = await ethers.getContractFactory("CurveOracle");
+    CurveOracle = await crvOracle.deploy(OracleManager.address);
+    await CurveOracle.deployed();
+
+    await AssetProvider.connect(owner).setAssetInfo(balToken.address, 1);
+    await AssetProvider.connect(owner).setAssetInfo(crvToken.address, 1);
+    await AssetProvider.connect(owner).setAssetInfo(cvxLpToken.address, 1);
+    await AssetProvider.setAssetInfo(weth.address, 1);
+    await AssetProvider.setAssetInfo(usdc.address, 1);
+    await AssetProvider.setAssetInfo(usdt.address, 1);
+    await AssetProvider.setAssetInfo(wbtc.address, 1);
+    await AssetProvider.setAssetInfo(balLpToken.address, 2);
+    await AssetProvider.setCrvInfo(cvxLpToken.address, 3, "0xd51a44d3fae010294c616388b506acda1bfaae46"); // WBTC/USDC/WETH Curve Pool
+    await OracleManager.setBalancerOracle(BalancerOracle.address);
+    await OracleManager.setCurveOracle(CurveOracle.address);
+
+    await OracleManager.connect(VaultContract.signer).setAssetSources([crvToken.address], ["0xCd627aA160A6fA45Eb793D19Ef54f5062F20f33f"]);  // CRV/USD
+    await OracleManager.connect(VaultContract.signer).setAssetSources([balToken.address], ["0xdF2917806E30300537aEB49A7663062F4d1F2b5F"]);  // BAL/USD
+    await OracleManager.connect(VaultContract.signer).setAssetSources([cvxToken.address], ["0xd962fC30A72A84cE50161031391756Bf2876Af5D"]);  // CVX/USD
+    await OracleManager.connect(VaultContract.signer).setAssetSources([weth.address], ["0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"]); // ETH/USD
+    // await OracleManager.connect(VaultContract.signer).setAssetSources([dai.address], ["0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9"]);  // DAI/USD
+    await OracleManager.setAssetSources([usdt.address], ["0x3e7d1eab13ad0104d2750b8863b489d65364e32d"]);  //USDT/USD
+    await OracleManager.setAssetSources([usdc.address], ["0x8fffffd4afb6115b954bd326cbe7b4ba576818f6"]); // USDC/USD
+    await OracleManager.setAssetSources([wbtc.address], ["0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"]);  // BTC/USD
   });
 
   describe("Admin Role", async () => {

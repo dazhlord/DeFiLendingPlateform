@@ -16,7 +16,7 @@ contract LendingVault is Ownable {
     uint256 public interestRate;
     address public treasury;
 
-    address public immutable oracle;
+    address public oracle;
     uint256 public constant LP_DECIMALS = 18;
     uint256 public INTEREST_DECIMALS = 3;
 
@@ -57,10 +57,13 @@ contract LendingVault is Ownable {
         _;
     }
 
-    constructor(address _sToken, address _oracle) {
+    constructor(address _sToken) {
         sToken = _sToken;
-        oracle = _oracle;
         treasury = msg.sender;
+    }
+
+    function setPriceOracle(address _oracle) public onlyOwner{
+        oracle = _oracle;
     }
 
     function setStrategy(address lpToken, address _strategy) public onlyOwner {
