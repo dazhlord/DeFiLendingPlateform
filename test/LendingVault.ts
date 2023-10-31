@@ -25,7 +25,6 @@ describe("Lending Vault", async () => {
   let balGauge: SignerWithAddress;
 
   let VaultContract: Contract;
-  let PriceOracle: Contract;
   let StableCoin: Contract;
 
   let CvxStrategy: Contract;
@@ -41,6 +40,7 @@ describe("Lending Vault", async () => {
   let usdc: SignerWithAddress;
   let usdt: SignerWithAddress;
   let weth: SignerWithAddress;
+  let gho: SignerWithAddress;
 
   let OracleManager : Contract;
   let BalancerOracle : Contract;
@@ -51,18 +51,18 @@ describe("Lending Vault", async () => {
     [owner, user1, user2, user3] = await ethers.getSigners();
     balLpToken = await ethers.getContractAt(
       "IERC20",
-      "0x5122e01d819e58bb2e22528c0d68d310f0aa6fd7"
-    ); // 50KNC-25WETH-25USDC-BPT
+      "0x8353157092ed8be69a9df8f95af097bbf33cb2af"
+    ); // GHO/USDT/USDC
     cvxLpToken = await ethers.getContractAt(
       "IERC20",
       "0xc4AD29ba4B3c580e6D59105FFf484999997675Ff"
     ); // WBTC_LP_TOKEN_ADDRESS
     balGauge = await ethers.getSigner(
-      "0x09afec27f5a6201617aad014ceea8deb572b0608"
-    ); // 50KNC-25WETH-25USDC-BPT-gauge
+      "0xf720e9137baa9C7612e6CA59149a5057ab320cFa"
+    ); //GHO/USDT/USDC-gauge
 
     balTokenOwner = await ethers.getImpersonatedSigner(
-      "0xac0367375ec176d30f38dbc50904209f4dc67cf4"
+      "0x924EbCFbd31bEdf4Fd3503553d7Bd34dDF68576f"
     );
     cvxTokenOwner = await ethers.getImpersonatedSigner(
       "0x347140c7F001452e6A60131D24b37103D0e34231"
@@ -84,6 +84,7 @@ describe("Lending Vault", async () => {
     usdc = await ethers.getSigner("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
     usdt = await ethers.getSigner("0xdAC17F958D2ee523a2206206994597C13D831ec7");
     wbtc = await ethers.getSigner("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599");
+    gho = await ethers.getSigner("0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f");
 
     const stableCoin = await ethers.getContractFactory("StableCoin");
     StableCoin = await stableCoin.deploy();
@@ -141,6 +142,7 @@ describe("Lending Vault", async () => {
     await AssetProvider.setAssetInfo(usdc.address, 1);
     await AssetProvider.setAssetInfo(usdt.address, 1);
     await AssetProvider.setAssetInfo(wbtc.address, 1);
+    await AssetProvider.setAssetInfo(gho.address, 1);
     await AssetProvider.setAssetInfo(balLpToken.address, 2);
     await AssetProvider.setCrvInfo(cvxLpToken.address, 3, "0xd51a44d3fae010294c616388b506acda1bfaae46"); // WBTC/USDC/WETH Curve Pool
     await OracleManager.setBalancerOracle(BalancerOracle.address);
@@ -154,6 +156,7 @@ describe("Lending Vault", async () => {
     await OracleManager.setAssetSources([usdt.address], ["0x3e7d1eab13ad0104d2750b8863b489d65364e32d"]);  //USDT/USD
     await OracleManager.setAssetSources([usdc.address], ["0x8fffffd4afb6115b954bd326cbe7b4ba576818f6"]); // USDC/USD
     await OracleManager.setAssetSources([wbtc.address], ["0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"]);  // BTC/USD
+    await OracleManager.setAssetSources([gho.address], ["0x3f12643d3f6f874d39c2a4c9f2cd6f2dbac877fc"]); // GHO/USD
 
     await VaultContract.setPriceOracle(OracleManager.address);
 
@@ -162,11 +165,11 @@ describe("Lending Vault", async () => {
   describe("Admin Role", async () => {
     it("set Strategy failed without admin call", async () => {
       await expect(
-        VaultContract.connect(user1.address).setStrategy(
+        VaultContract.connect(user1).setStrategy(
           balLpToken.address,
           BalStrategy.address
         )
-      ).to.be.reverted;
+      ).reverted;
     });
     it("set Strategy successfully", async () => {
       await VaultContract.setStrategy(balLpToken.address, BalStrategy.address);
@@ -201,7 +204,7 @@ describe("Lending Vault", async () => {
       expect(interestRate).to.be.eq(5);
     });
     it("set StrategyInfo failed without admin call", async() => {
-      await expect(VaultContract.connect(user1.address).setStrategyInfo(balLpToken.address, 30, 40, 2)).to.be.reverted;
+      await expect(VaultContract.connect(user1).setStrategyInfo(balLpToken.address, 30, 40, 2)).reverted;
     })
   });
 
@@ -235,10 +238,10 @@ describe("Lending Vault", async () => {
 
       await balLpToken
         .connect(balTokenOwner)
-        .transfer(user1.address, ethers.utils.parseEther("500"));
+        .transfer(user1.address, ethers.utils.parseEther("25"));
       await balLpToken
         .connect(balTokenOwner)
-        .transfer(user2.address, ethers.utils.parseEther("500"));
+        .transfer(user2.address, ethers.utils.parseEther("25"));
     });
     describe("Deposit Functionality", async () => {
       it("deposit BalancerLP Successfully", async () => {
@@ -249,17 +252,17 @@ describe("Lending Vault", async () => {
 
         await balLpToken
           .connect(user1)
-          .approve(VaultContract.address, ethers.utils.parseEther("400"));
+          .approve(VaultContract.address, ethers.utils.parseEther("20"));
         await VaultContract.connect(user1).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
         await balLpToken
           .connect(user2)
-          .approve(VaultContract.address, ethers.utils.parseEther("400"));
+          .approve(VaultContract.address, ethers.utils.parseEther("20"));
         await VaultContract.connect(user2).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
         const user1BalanceAfter = await balLpToken.balanceOf(user1.address);
         const user2BalanceAfter = await balLpToken.balanceOf(user2.address);
@@ -268,14 +271,14 @@ describe("Lending Vault", async () => {
         const pool = await BalStrategy.poolInfo(balLpToken.address);
 
         expect(user1BalanceBefore.sub(user1BalanceAfter)).to.be.eq(
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
         expect(user2BalanceBefore.sub(user2BalanceAfter)).to.be.eq(
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
-        expect(pool.totalDeposit).to.be.eq(ethers.utils.parseEther("800"));
+        expect(pool.totalDeposit).to.be.eq(ethers.utils.parseEther("40"));
         expect(gaugeBalanceAfter.sub(gaugeBalanceBefore)).to.be.eq(
-          ethers.utils.parseEther("800")
+          ethers.utils.parseEther("40")
         );
       });
       it("deposit ConvexLP Successfully", async () => {
@@ -338,10 +341,10 @@ describe("Lending Vault", async () => {
           .approve(VaultContract.address, ethers.utils.parseEther("400"));
         await VaultContract.connect(user1).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
-        // await balLpToken.connect(user2).approve(VaultContract.address, ethers.utils.parseEther("400"));
-        // await VaultContract.connect(user2).deposit(balLpToken.address, ethers.utils.parseEther("400"));
+        // await balLpToken.connect(user2).approve(VaultContract.address, ethers.utils.parseEther("40"));
+        // await VaultContract.connect(user2).deposit(balLpToken.address, ethers.utils.parseEther("40"));
 
         //Also, deposit CvxLP tokens
         await cvxLpToken
@@ -362,16 +365,20 @@ describe("Lending Vault", async () => {
           balLpToken.address
         );
 
-        //user1 borrows with BalLPToken
+        //user1 borrows with CvxLPToken
         const borrowableAmountCvx = await VaultContract.getBorrowableAmount(
           user1.address,
           cvxLpToken.address
         );
 
+        const balLpTokenPrice = await OracleManager.getAssetPrice(balLpToken.address);
+          console.log("balLpTokenPrice:", balLpTokenPrice);
+        const cvxLpTokenPrice = await OracleManager.getAssetPrice(cvxLpToken.address);
+
         const user1BalanceBefore = await StableCoin.balanceOf(user1.address);
         await VaultContract.connect(user1).borrow(
           balLpToken.address,
-          ethers.utils.parseEther("20")
+          ethers.utils.parseEther("4")
         );
         await VaultContract.connect(user1).borrow(
           cvxLpToken.address,
@@ -380,10 +387,12 @@ describe("Lending Vault", async () => {
 
         const user1BalanceAfter = await StableCoin.balanceOf(user1.address);
 
-        expect(borrowableAmountBal).to.be.eq(ethers.utils.parseEther("600"));
-        expect(borrowableAmountCvx).to.be.eq(ethers.utils.parseEther("3"));
+        const user1Collateral = await ethers.utils.parseEther("1");
+
+        expect(borrowableAmountBal).to.be.eq(balLpTokenPrice.mul(user1Collateral).mul(20).mul(3).div(4).div(1e8));
+        expect(borrowableAmountCvx).to.be.eq(cvxLpTokenPrice.mul(user1Collateral).mul(3).div(4).div(1e8));  // LTV = collateral * cvxLpTokenPrice * LTV / 10 ** priceDecimal
         expect(user1BalanceAfter.sub(user1BalanceBefore)).to.be.eq(
-          ethers.utils.parseEther("22")
+          ethers.utils.parseEther("6")
         );
       });
     });
@@ -392,10 +401,10 @@ describe("Lending Vault", async () => {
       beforeEach(async () => {
         await balLpToken
           .connect(user2)
-          .approve(VaultContract.address, ethers.utils.parseEther("400"));
+          .approve(VaultContract.address, ethers.utils.parseEther("40"));
         await VaultContract.connect(user2).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
         await cvxLpToken
           .connect(user2)
@@ -407,7 +416,7 @@ describe("Lending Vault", async () => {
 
         await VaultContract.connect(user2).borrow(
           balLpToken.address,
-          ethers.utils.parseEther("20")
+          ethers.utils.parseEther("4")
         );
         await VaultContract.connect(user2).borrow(
           cvxLpToken.address,
@@ -462,17 +471,17 @@ describe("Lending Vault", async () => {
         //user1 and user2 deposit BalLP tokens
         await balLpToken
           .connect(user1)
-          .approve(VaultContract.address, ethers.utils.parseEther("400"));
+          .approve(VaultContract.address, ethers.utils.parseEther("20"));
         await VaultContract.connect(user1).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
         await balLpToken
           .connect(user2)
-          .approve(VaultContract.address, ethers.utils.parseEther("400"));
+          .approve(VaultContract.address, ethers.utils.parseEther("20"));
         await VaultContract.connect(user2).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("400")
+          ethers.utils.parseEther("20")
         );
 
         //Also, deposit CvxLP tokens
@@ -536,11 +545,11 @@ describe("Lending Vault", async () => {
 
         await VaultContract.connect(user1).withdraw(
           balLpToken.address,
-          ethers.utils.parseEther("10")
+          ethers.utils.parseEther("1")
         );
         await VaultContract.connect(user2).withdraw(
           balLpToken.address,
-          ethers.utils.parseEther("10")
+          ethers.utils.parseEther("1")
         );
 
         const user1BalanceAfter = await balLpToken.balanceOf(user1.address);
@@ -554,10 +563,10 @@ describe("Lending Vault", async () => {
         );
 
         expect(user1BalanceAfter.sub(user1BalanceBefore)).to.be.eq(
-          ethers.utils.parseEther("10")
+          ethers.utils.parseEther("1")
         );
         expect(user2BalanceAfter.sub(user2BalanceBefore)).to.be.eq(
-          ethers.utils.parseEther("10")
+          ethers.utils.parseEther("1")
         );
       });
     });
@@ -568,37 +577,37 @@ describe("Lending Vault", async () => {
         const user2Balance = await balLpToken.balanceOf(user2.address);
         const ownerBalance = await balLpToken.balanceOf(balTokenOwner.address);
 
-        await VaultContract.setInterestRate(5000);
+        await VaultContract.setInterestRate(10000);
         //user1 and user2 deposit BalLP tokens
         await balLpToken
           .connect(user1)
           .approve(VaultContract.address, ethers.utils.parseEther("40"));
         await VaultContract.connect(user1).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("20")
+          ethers.utils.parseEther("10")
         );
         await balLpToken
           .connect(user2)
           .approve(VaultContract.address, ethers.utils.parseEther("40"));
         await VaultContract.connect(user2).deposit(
           balLpToken.address,
-          ethers.utils.parseEther("20")
+          ethers.utils.parseEther("10")
         );
         await increaseBlockTimestamp(provider, 86400 * 2);
         await VaultContract.connect(user1).borrow(
           balLpToken.address,
-          ethers.utils.parseEther("30")
+          ethers.utils.parseEther("2")
         );
       });
 
       it("liquidation successfully", async () => {
-        await increaseBlockTimestamp(provider, 86400 * 15);
+        await increaseBlockTimestamp(provider, 86400 * 30);
         await StableCoin.mintByOwner(
           user3.address,
           ethers.utils.parseEther("100")
         );
 
-        const penaltyAmount = ethers.utils.parseEther("30").div(100);
+        const penaltyAmount = ethers.utils.parseUnits("36", 17).div(100);
         const user1InfoBefore = await VaultContract.stakers(
           balLpToken.address,
           user1.address
@@ -607,7 +616,7 @@ describe("Lending Vault", async () => {
         await VaultContract.connect(user3).liquidation(
           balLpToken.address,
           user1.address,
-          ethers.utils.parseEther("15")
+          ethers.utils.parseUnits("18",17)
         );
 
         const user1InfoAfter = await VaultContract.stakers(
@@ -620,16 +629,18 @@ describe("Lending Vault", async () => {
         );
 
         const treasuryBalance = await balLpToken.balanceOf(owner.address);
-        expect(user3Info.collateralAmount).to.be.eq(
-          ethers.utils.parseEther("15").add(penaltyAmount.div(2)).div(2)
-        );
+        const balPrice= await OracleManager.getAssetPrice(balLpToken.address);
+        const user1UsdToCollateral = await VaultContract.usdToCollateral(ethers.utils.parseUnits("18", 15).mul(102), balLpToken.address);
+        const user3UsdToCollateral = await VaultContract.usdToCollateral(ethers.utils.parseUnits("18", 15).mul(101), balLpToken.address);
+        const treasuryCollateral = await VaultContract.usdToCollateral(penaltyAmount.div(2), balLpToken.address);
+        expect(user3Info.collateralAmount).to.be.eq(user3UsdToCollateral);
         expect(
           user1InfoBefore.collateralAmount.sub(user1InfoAfter.collateralAmount)
-        ).to.be.eq(ethers.utils.parseEther("15").add(penaltyAmount).div(2));
-        expect(treasuryBalance).to.be.eq(penaltyAmount.div(2).div(2));
+        ).to.be.eq(user1UsdToCollateral);
+        expect(treasuryBalance).to.be.eq(treasuryCollateral);
       });
       it("Accrue functionality", async() => {
-        await increaseBlockTimestamp(provider, 86400 * 15);
+        await increaseBlockTimestamp(provider, 86400 * 30);
         await StableCoin.mintByOwner(
           user3.address,
           ethers.utils.parseEther("100")
@@ -637,7 +648,7 @@ describe("Lending Vault", async () => {
         await VaultContract.connect(user3).liquidation(
           balLpToken.address,
           user1.address,
-          ethers.utils.parseEther("15")
+          ethers.utils.parseUnits("18", 17)
         );
 
         await increaseBlockTimestamp(provider, 86400 * 15);
@@ -739,7 +750,7 @@ describe("Lending Vault", async () => {
       );
       await VaultContract.connect(user1).borrow(
         balLpToken.address,
-        ethers.utils.parseEther("5")
+        ethers.utils.parseEther("1")
       );
       await expect(
         VaultContract.connect(user1).withdraw(
@@ -776,7 +787,7 @@ describe("Lending Vault", async () => {
       );
       await VaultContract.connect(user1).borrow(
         balLpToken.address,
-        ethers.utils.parseEther("5")
+        ethers.utils.parseEther("1")
       );
       await increaseBlockTimestamp(provider, 86400 * 2);
       await expect(
@@ -793,7 +804,7 @@ describe("Lending Vault", async () => {
       );
       await VaultContract.connect(user1).borrow(
         balLpToken.address,
-        ethers.utils.parseEther("5")
+        ethers.utils.parseEther("1")
       );
       await increaseBlockTimestamp(provider, 86400 * 2);
       await StableCoin.mintByOwner(user1.address, ethers.utils.parseEther("50"));
@@ -837,7 +848,7 @@ describe("Lending Vault", async () => {
       );
       await VaultContract.connect(user1).borrow(
         balLpToken.address,
-        ethers.utils.parseEther("5")
+        ethers.utils.parseEther("1")
       );
       await expect(
         VaultContract.connect(user3).liquidation(
@@ -848,7 +859,7 @@ describe("Lending Vault", async () => {
       ).revertedWith("ERR_LIQUIDATION_NOT_REACHED_THRESHOLD");
     });
     it("Liquidation failed if amount is smaller than debt fee", async () => {
-      await VaultContract.setInterestRate(5000);
+      await VaultContract.setInterestRate(10000);
       //user1 and user2 deposit BalLP tokens
       await balLpToken
         .connect(user1)
@@ -860,7 +871,7 @@ describe("Lending Vault", async () => {
       await increaseBlockTimestamp(provider, 86400 * 2);
       await VaultContract.connect(user1).borrow(
         balLpToken.address,
-        ethers.utils.parseEther("7")
+        ethers.utils.parseEther("1")
       );
 
       await increaseBlockTimestamp(provider, 86400 * 30);
@@ -878,7 +889,7 @@ describe("Lending Vault", async () => {
       ).revertedWith("ERR_LIQUIDATION_TOO_SMALL_AMOUNT");
     });
     it("Liquidation failed if amount is bigger than 50% of position", async () => {
-      await VaultContract.setInterestRate(5000);
+      await VaultContract.setInterestRate(10000);
       //user1 and user2 deposit BalLP tokens
       await balLpToken
         .connect(user1)
@@ -890,7 +901,7 @@ describe("Lending Vault", async () => {
       await increaseBlockTimestamp(provider, 86400 * 2);
       await VaultContract.connect(user1).borrow(
         balLpToken.address,
-        ethers.utils.parseEther("7")
+        ethers.utils.parseEther("1")
       );
 
       await increaseBlockTimestamp(provider, 86400 * 30);
@@ -907,5 +918,8 @@ describe("Lending Vault", async () => {
         )
       ).revertedWith("ERR_LIQUIDATION_TOO_BIG_AMOUNT");
     });
+    it("Accrue failed if treasury fee is zero", async() => {
+      await expect(VaultContract.accrue()).revertedWith('ERR_TREASURYFEE_ZERO_AMOUNT');
+    })
   });
 });

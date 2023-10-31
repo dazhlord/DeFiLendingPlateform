@@ -4,11 +4,12 @@ pragma solidity ^0.8.9;
 /**
  *  @notice Balacner V2 Weighted Pool
  */
-interface IWeightedPool {
+interface IBalancerPool {
   function getNormalizedWeights() external view returns (uint256[] memory);
   function getPoolId() external view returns (bytes32);
   function getInvariant() external view returns (uint256);
-  function getVault()external view returns(address);
+  function getVault()external view returns (address);
   function totalSupply() external view returns (uint256);
   function getLastInvariant() external view returns (uint256);
+  function getBptIndex() external view returns (uint256);
 }
