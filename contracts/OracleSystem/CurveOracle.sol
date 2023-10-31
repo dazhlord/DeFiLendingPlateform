@@ -18,7 +18,7 @@ contract CurveOracle {
 		oracleManager = _oracle;
 	}
 
-	function getAssetPrice(address lpToken, address pool) external view returns(uint256 price) {
+	function getAssetPrice(address pool) external view returns(uint256 price) {
 		require(msg.sender == oracleManager);
 
         uint256 poolSize = 0;
@@ -27,14 +27,10 @@ contract CurveOracle {
 			poolSize++;
 			} catch {
 				//ignore error
-				console.log("error:", i);
 			}
 		}
 
-		console.log("poolSize:", poolSize);
-
         uint256[] memory prices = new uint256[](poolSize);
-		console.log("pool:", pool);
 
         for (uint256 i =0; i < poolSize; i++) {
             address underlying = ICurvePool(pool).coins(i);
@@ -66,7 +62,6 @@ contract CurveOracle {
 		);	
 		
 		return lp_price;
-		
 	}
 	
 	//returns n_token * vp * (p1 * p2 * p3) ^1/n	

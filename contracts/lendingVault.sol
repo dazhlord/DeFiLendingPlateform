@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/IStableCoin.sol";
 import "./interfaces/IStrategy.sol";
+import "./interfaces/IFlashLoanReceiver.sol";
 import "./interfaces/Oracle/IOracleManager.sol";
 
 import "hardhat/console.sol";
@@ -17,7 +18,7 @@ contract LendingVault is Ownable {
     address public treasury;
 
     address public oracle;
-    uint256 public constant LP_DECIMALS = 18;
+    uint256 public constant decimals = 18;
     uint256 public INTEREST_DECIMALS = 3;
 
     uint256 public totalBorrowAmount;
@@ -40,6 +41,8 @@ contract LendingVault is Ownable {
 
     uint256 public treasuryFee;
     uint256 public treasuryLastUpdateTime;
+
+    uint256 public flashLoanFee;
 
     event Deposit(address from, uint amount, address asset);
     event Borrow(address to, uint amount, address asset);
@@ -88,6 +91,10 @@ contract LendingVault is Ownable {
 
     function setInterestRate(uint256 _rate) external onlyOwner {
         interestRate = _rate;
+    }
+
+    function setFlashLoanFee(uint256 _fee) external onlyOwner {
+        flashLoanFee = _fee;
     }
 
     function deposit(address lpToken, uint256 amount) validLPToken(lpToken) external {
@@ -202,6 +209,21 @@ contract LendingVault is Ownable {
         IStableCoin(sToken).mint(treasury, treasuryFee);
     }
 
+    function flashLoan(address receiver, uint256 amount, bytes calldata param) external returns(uint256) {
+        require(amount > 0, "ERR_FLASHLOAN_ZERO_AMOUNT");
+        require(IERC20(sToken).balanceOf(address(this)) > amount, "ERR_FLASHLOAN_TOO_BIG_AMOUNT");
+
+        IERC20(sToken).transfer(receiver, amount);
+
+        uint256 premium = amount * flashLoanFee / 100;
+        IFlashLoanReceiver flashReceiver = IFlashLoanReceiver(receiver);
+        require(flashReceiver.executeOperation(sToken, amount, premium, msg.sender, param), "ERR_FLASHLOAN_INVALID_EXECUTOR_RETUR");
+
+        IStableCoin(sToken).transferFrom(receiver, address(this), amount + premium);
+        // transfer earned premium to treasury
+        treasuryFee += premium;
+    }
+
     function usdToCollateral(
         uint256 usdAmount,
         address lpToken
@@ -294,6 +316,8 @@ contract LendingVault is Ownable {
             stakers[lpToken][user].collateralAmount *
             positions[lpToken].LThreshold) / 100 / 1e8;
         require(stakers[lpToken][user].borrowAmount > 0, "ERR_LIQUIDATION_NO_BORROW");
+        console.log("threshold:", thresholdAmountInUSD);
+        console.log("debtmount:", debtAmount);
         require(debtAmount >= thresholdAmountInUSD, "ERR_LIQUIDATION_NOT_REACHED_THRESHOLD");
         require(amount >= stakers[lpToken][user].debtInterest, "ERR_LIQUIDATION_TOO_SMALL_AMOUNT");
         require(amount * 2 <= debtAmount, "ERR_LIQUIDATION_TOO_BIG_AMOUNT");

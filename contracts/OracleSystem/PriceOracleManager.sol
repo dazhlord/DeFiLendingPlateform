@@ -104,6 +104,6 @@ contract PriceOracleManager {
         address asset) internal view returns (uint256 price) {
         (, address pool) = assetProvider.getAssetType(asset);
 
-        price = CurveOracle(curveOracle).getAssetPrice(asset, pool);
+        price = CurveOracle(curveOracle).getAssetPrice(pool);
     }
 }
