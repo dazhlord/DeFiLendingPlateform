@@ -16,7 +16,7 @@ contract LendingVault is Ownable {
     uint256 public interestRate;
     address public treasury;
 
-    address public immutable oracle;
+    address public oracle;
     uint256 public constant LP_DECIMALS = 18;
     uint256 public INTEREST_DECIMALS = 3;
 
@@ -57,10 +57,13 @@ contract LendingVault is Ownable {
         _;
     }
 
-    constructor(address _sToken, address _oracle) {
+    constructor(address _sToken) {
         sToken = _sToken;
-        oracle = _oracle;
         treasury = msg.sender;
+    }
+
+    function setPriceOracle(address _oracle) public onlyOwner{
+        oracle = _oracle;
     }
 
     function setStrategy(address lpToken, address _strategy) public onlyOwner {
@@ -204,7 +207,7 @@ contract LendingVault is Ownable {
         address lpToken
     ) public view returns (uint256) {
         return
-            usdAmount /
+            usdAmount * 1e8 /
             IOracleManager(oracle).getAssetPrice(lpToken);
     }
 
@@ -223,7 +226,7 @@ contract LendingVault is Ownable {
             lpToken
         ) * amountLimit);
 
-        amountLimitInUSD = amountLimitInUSD * positions[lpToken].LTV / 100;
+        amountLimitInUSD = amountLimitInUSD * positions[lpToken].LTV / 100 / 1e8;
         return amountLimitInUSD - debt(user, lpToken);
     }
 
@@ -260,7 +263,7 @@ contract LendingVault is Ownable {
         if(debtAmount > 0) {
             uint256 ltvInUSD = (IOracleManager(oracle).getAssetPrice(lpToken) *
                 (userBalance - amountWithdraw) *
-                positions[lpToken].LTV) / 100;
+                positions[lpToken].LTV) / 100 / 1e8;
             require(ltvInUSD > debtAmount, "ERR_WITHDRAW_GOES_OVER_LTV");
         }
     }
@@ -289,7 +292,7 @@ contract LendingVault is Ownable {
             lpToken
         ) *
             stakers[lpToken][user].collateralAmount *
-            positions[lpToken].LThreshold) / 100;
+            positions[lpToken].LThreshold) / 100 / 1e8;
         require(stakers[lpToken][user].borrowAmount > 0, "ERR_LIQUIDATION_NO_BORROW");
         require(debtAmount >= thresholdAmountInUSD, "ERR_LIQUIDATION_NOT_REACHED_THRESHOLD");
         require(amount >= stakers[lpToken][user].debtInterest, "ERR_LIQUIDATION_TOO_SMALL_AMOUNT");
