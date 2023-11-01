@@ -217,7 +217,7 @@ contract LendingVault is Ownable {
 
         uint256 premium = amount * flashLoanFee / 100;
         IFlashLoanReceiver flashReceiver = IFlashLoanReceiver(receiver);
-        require(flashReceiver.executeOperation(sToken, amount, premium, msg.sender, param), "ERR_FLASHLOAN_INVALID_EXECUTOR_RETUR");
+        require(flashReceiver.executeOperation(sToken, amount, premium, msg.sender, param), "ERR_FLASHLOAN_INVALID_EXECUTOR_RETURN");
 
         IStableCoin(sToken).transferFrom(receiver, address(this), amount + premium);
         // transfer earned premium to treasury

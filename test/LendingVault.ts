@@ -46,6 +46,7 @@ describe("Lending Vault", async () => {
   let BalancerOracle : Contract;
   let CurveOracle : Contract;
   let AssetProvider: Contract;
+  let FlashLoanReceiver: Contract;
 
   beforeEach(async () => {
     [owner, user1, user2, user3] = await ethers.getSigners();
@@ -206,6 +207,9 @@ describe("Lending Vault", async () => {
     it("set StrategyInfo failed without admin call", async() => {
       await expect(VaultContract.connect(user1).setStrategyInfo(balLpToken.address, 30, 40, 2)).reverted;
     })
+       it("set FlashLoan Fee failed without admin call", async() => {
+        await expect(VaultContract.connect(user1).setFlashLoanFee(10)).reverted;
+       })
   });
 
   describe("Main functionality", async () => {
@@ -922,4 +926,31 @@ describe("Lending Vault", async () => {
       await expect(VaultContract.accrue()).revertedWith('ERR_TREASURYFEE_ZERO_AMOUNT');
     })
   });
+
+  describe("FlashLoan fuctionality", async() => {
+    beforeEach(async() => {
+      const loanReceiver = await ethers.getContractFactory("MockFlashLoanReceiver");
+      FlashLoanReceiver = await loanReceiver.deploy();
+      await FlashLoanReceiver.deployed();
+    })
+    it("flash loan successfully", async() => {
+      await StableCoin.mintByOwner(VaultContract.address, ethers.utils.parseEther("20"));
+      const vaultBalanceBefore = await StableCoin.balanceOf(VaultContract.address);
+      await StableCoin.mintByOwner(FlashLoanReceiver.address, ethers.utils.parseEther("10"));
+      await VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("10"), "0x00");
+      const flashFee = await VaultContract.flashLoanFee();
+      const vaultBalanceAfter = await StableCoin.balanceOf(VaultContract.address);
+      expect(vaultBalanceAfter.sub(vaultBalanceBefore)).to.be.eq(ethers.utils.parseEther("10").mul(flashFee).div(100));
+    })
+    it("revert if invalid input", async() => {
+      await expect(VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("10"), "0x00")).revertedWith("ERR_FLASHLOAN_TOO_BIG_AMOUNT");
+      await expect(VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("0"), "0x00")).revertedWith("ERR_FLASHLOAN_ZERO_AMOUNT");
+    })
+    it("revert if cannot receive premium", async() => {
+      await VaultContract.setFlashLoanFee(10);
+      await StableCoin.mintByOwner(VaultContract.address, ethers.utils.parseEther("20"));
+      //revert since FlashLoanReceiver cannot transfer amount+premium back to Protocol
+      await expect(VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("10"), "0x00")).revertedWith("ERR_FLASHLOAN_INVALID_EXECUTOR_RETURN");
+    })
+  })
 });
