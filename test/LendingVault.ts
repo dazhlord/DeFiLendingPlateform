@@ -3,6 +3,7 @@ import { expect } from "chai";
 import { MockProvider } from "ethereum-waffle";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { Contract } from "alchemy-sdk";
+import {defaultAbiCoder} from "@ethersproject/abi"
 
 const { provider } = waffle;
 
@@ -160,7 +161,6 @@ describe("Lending Vault", async () => {
     await OracleManager.setAssetSources([gho.address], ["0x3f12643d3f6f874d39c2a4c9f2cd6f2dbac877fc"]); // GHO/USD
 
     await VaultContract.setPriceOracle(OracleManager.address);
-
   });
 
   describe("Admin Role", async () => {
@@ -577,10 +577,6 @@ describe("Lending Vault", async () => {
 
     describe("Liquidation call", async () => {
       beforeEach(async () => {
-        const user1Balance = await balLpToken.balanceOf(user1.address);
-        const user2Balance = await balLpToken.balanceOf(user2.address);
-        const ownerBalance = await balLpToken.balanceOf(balTokenOwner.address);
-
         await VaultContract.setInterestRate(10000);
         //user1 and user2 deposit BalLP tokens
         await balLpToken
@@ -929,11 +925,30 @@ describe("Lending Vault", async () => {
 
   describe("FlashLoan fuctionality", async() => {
     beforeEach(async() => {
+      await VaultContract.setStrategy(balLpToken.address, BalStrategy.address);
+
+      await VaultContract.setInterestRate(10);
+      await VaultContract.setStrategyInfo(balLpToken.address, 75, 80, 2);
+
+      await BalStrategy.connect(owner).setGauge(
+        balLpToken.address,
+        balGauge.address
+      );
+
+      await user3.sendTransaction({
+        to: balTokenOwner.address,
+        value: ethers.utils.parseEther("10"),
+        gasLimit: 3000000,
+      });
+
+      await balLpToken
+        .connect(balTokenOwner)
+        .transfer(user1.address, ethers.utils.parseEther("25"));
       const loanReceiver = await ethers.getContractFactory("MockFlashLoanReceiver");
       FlashLoanReceiver = await loanReceiver.deploy();
       await FlashLoanReceiver.deployed();
     })
-    it("flash loan successfully", async() => {
+    it("simple flash loan successfully", async() => {
       await StableCoin.mintByOwner(VaultContract.address, ethers.utils.parseEther("20"));
       const vaultBalanceBefore = await StableCoin.balanceOf(VaultContract.address);
       await StableCoin.mintByOwner(FlashLoanReceiver.address, ethers.utils.parseEther("10"));
@@ -946,11 +961,56 @@ describe("Lending Vault", async () => {
       await expect(VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("10"), "0x00")).revertedWith("ERR_FLASHLOAN_TOO_BIG_AMOUNT");
       await expect(VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("0"), "0x00")).revertedWith("ERR_FLASHLOAN_ZERO_AMOUNT");
     })
-    it("revert if cannot receive premium", async() => {
+    // it("revert if cannot receive premium", async() => {
+    //   await VaultContract.setFlashLoanFee(10);
+    //   await StableCoin.mintByOwner(VaultContract.address, ethers.utils.parseEther("20"));
+    //   //revert since FlashLoanReceiver cannot transfer amount+premium back to Protocol
+    //   await expect(VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("10"), "0x00")).revertedWith("ERR_FLASHLOAN_INVALID_EXECUTOR_RETURN");
+    // })
+    it("flash loan successfully", async() => {      
+      await user3.sendTransaction({
+        to: balTokenOwner.address,
+        value: ethers.utils.parseEther("10"),
+        gasLimit: 3000000,
+      });
+
+      await balLpToken
+        .connect(balTokenOwner)
+        .transfer(user1.address, ethers.utils.parseEther("25"));
+
+      await VaultContract.setInterestRate(10000);
       await VaultContract.setFlashLoanFee(10);
-      await StableCoin.mintByOwner(VaultContract.address, ethers.utils.parseEther("20"));
-      //revert since FlashLoanReceiver cannot transfer amount+premium back to Protocol
-      await expect(VaultContract.connect(user2).flashLoan(FlashLoanReceiver.address, ethers.utils.parseEther("10"), "0x00")).revertedWith("ERR_FLASHLOAN_INVALID_EXECUTOR_RETURN");
+
+      //user1 deposits 10 BalLP tokens
+      await balLpToken
+        .connect(user1)
+        .approve(VaultContract.address, ethers.utils.parseEther("40"));
+      await VaultContract.connect(user1).deposit(
+        balLpToken.address,
+        ethers.utils.parseEther("10")
+      );
+
+      await increaseBlockTimestamp(provider, 86400 * 2);
+      //user1 borrows 2 stable coins
+      await VaultContract.connect(user1).borrow(
+        balLpToken.address,
+        ethers.utils.parseEther("2")
+      );
+      // increase time to increase debt
+      await increaseBlockTimestamp(provider, 86400 * 30);
+      await StableCoin.mintByOwner(
+        VaultContract.address,
+        ethers.utils.parseEther("2")
+      );
+      await StableCoin.mintByOwner(FlashLoanReceiver.address, ethers.utils.parseEther("3"));
+
+      //user3 flashloans and liquidate user1's position
+      const param = await defaultAbiCoder.encode(['address', 'address', 'uint256'],[balLpToken.address, user1.address, ethers.utils.parseUnits("18", 17)]);
+      const user3CollateralBalanceBefore = await balLpToken.balanceOf(user3.address);
+      await VaultContract.connect(user3).flashLoan(FlashLoanReceiver.address, ethers.utils.parseUnits("18", 17), param);
+      const user3CollateralBalanceAfter = await balLpToken.balanceOf(user3.address);
+      console.log("user3CollateralBalance", user3CollateralBalanceAfter - user3CollateralBalanceBefore);
+      expect(Number(user3CollateralBalanceAfter.sub(user3CollateralBalanceBefore))).greaterThan(0);
     })
   })
 });

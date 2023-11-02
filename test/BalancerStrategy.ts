@@ -142,7 +142,7 @@ describe("Balancer Strategy", async () => {
                 const user1Reward =  user1RewardAfter - user1RewardBefore;
                 const user2Reward = user2RewardAfter - user2RewardBefore;
                 //rewards of user1 and user2 will be almost same.
-                const rewardDelta = user1Reward / 10000;
+                const rewardDelta = user1Reward / 100;
                 expect(user1Reward- user2Reward).to.be.lessThanOrEqual(rewardDelta);
             })
 

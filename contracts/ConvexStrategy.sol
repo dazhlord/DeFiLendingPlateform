@@ -132,6 +132,19 @@ contract ConvexStrategy is Ownable{
         IERC20(cvx).transfer(user, cvxRewardClaimed);
     }
 
+    function decreaseBalance(address user, address lpToken, uint256 amount) external onlyVault {
+        uint256 _poolId = poolId[lpToken];
+
+        PoolStakerInfo storage pool = poolStakerInfo[_poolId][user];
+        pool.depositorBalance -= amount;        
+    }
+    function increaseBalance(address user, address lpToken, uint256 amount) external onlyVault {
+        uint256 _poolId = poolId[lpToken];
+
+        PoolStakerInfo storage pool = poolStakerInfo[_poolId][user];
+        pool.depositorBalance += amount;        
+    }
+
     function getClaimableReward(address user, address lpToken) external view returns (uint256, uint256)  {
         uint256 _poolId = poolId[lpToken];
 

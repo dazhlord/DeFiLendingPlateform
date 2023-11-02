@@ -3,6 +3,7 @@
 pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/IStableCoin.sol";
@@ -13,6 +14,7 @@ import "./interfaces/Oracle/IOracleManager.sol";
 import "hardhat/console.sol";
 
 contract LendingVault is Ownable {
+    using SafeERC20 for IERC20;
     address public sToken;
     uint256 public interestRate;
     address public treasury;
@@ -194,6 +196,15 @@ contract LendingVault is Ownable {
         stakerBorrower.borrowAmount -= liquidationAmount - stakerBorrower.debtInterest;
         stakerBorrower.debtInterest = 0;
         treasuryFee += penaltyAmount / 2;
+        IStrategy(strategy[lpToken]).decreaseBalance(user, lpToken, usdToCollateral(
+            liquidationAmount + penaltyAmount,
+            lpToken
+        ));
+        IStrategy(strategy[lpToken]).increaseBalance(msg.sender, lpToken, usdToCollateral(
+            liquidationAmount + penaltyAmount / 2,
+            lpToken
+        ));
+
         IStrategy(strategy[lpToken]).withdraw(user, lpToken, usdToCollateral(penaltyAmount / 2, lpToken));
         IERC20(lpToken).transfer(treasury, usdToCollateral(penaltyAmount / 2, lpToken));
 
@@ -211,15 +222,16 @@ contract LendingVault is Ownable {
 
     function flashLoan(address receiver, uint256 amount, bytes calldata param) external returns(uint256) {
         require(amount > 0, "ERR_FLASHLOAN_ZERO_AMOUNT");
-        require(IERC20(sToken).balanceOf(address(this)) > amount, "ERR_FLASHLOAN_TOO_BIG_AMOUNT");
-
-        IERC20(sToken).transfer(receiver, amount);
+        require(IStableCoin(sToken).balanceOf(address(this)) > amount, "ERR_FLASHLOAN_TOO_BIG_AMOUNT");
+        
+        IStableCoin(sToken).mint(receiver, amount);
+        IStableCoin(sToken).burn(address(this), amount);
 
         uint256 premium = amount * flashLoanFee / 100;
         IFlashLoanReceiver flashReceiver = IFlashLoanReceiver(receiver);
         require(flashReceiver.executeOperation(sToken, amount, premium, msg.sender, param), "ERR_FLASHLOAN_INVALID_EXECUTOR_RETURN");
 
-        IStableCoin(sToken).transferFrom(receiver, address(this), amount + premium);
+        IERC20(sToken).safeTransferFrom(receiver, address(this), amount + premium);
         // transfer earned premium to treasury
         treasuryFee += premium;
     }
