@@ -115,6 +115,15 @@ contract BalancerStrategy is Ownable {
         IERC20(bal).transfer(user, rewardClaimed);
     }
 
+    function decreaseBalance(address user, address lpToken, uint256 amount) external onlyVault {
+        PoolInfo storage pool = poolInfo[lpToken];
+        pool.depositorBalance[user] -= amount;        
+    }
+    function increaseBalance(address user, address lpToken, uint256 amount) external onlyVault {
+        PoolInfo storage pool = poolInfo[lpToken];
+        pool.depositorBalance[user] += amount;        
+    }
+
     function getClaimableReward(
         address user,
         address lpToken
